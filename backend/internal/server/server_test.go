@@ -21,7 +21,7 @@ func TestEndpoints(t *testing.T) {
 		ShutdownTimeout: 1 * time.Second,
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	execService := execution.NewService()
+	execService := execution.NewService(cfg)
 	srv := New(cfg, logger, execService)
 
 	tests := []struct {

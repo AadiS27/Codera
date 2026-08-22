@@ -3,13 +3,16 @@ package domain
 type ExecutionStatus string
 
 const (
-	StatusSuccess          ExecutionStatus = "SUCCESS"
-	StatusCompilationError ExecutionStatus = "COMPILATION_ERROR"
-	StatusRuntimeError     ExecutionStatus = "RUNTIME_ERROR"
+	StatusSuccess             ExecutionStatus = "SUCCESS"
+	StatusCompilationError    ExecutionStatus = "COMPILATION_ERROR"
+	StatusCompilationTimeout  ExecutionStatus = "COMPILATION_TIMEOUT"
+	StatusRuntimeError        ExecutionStatus = "RUNTIME_ERROR"
+	StatusTimeLimitExceeded   ExecutionStatus = "TIME_LIMIT_EXCEEDED"
+	StatusOutputLimitExceeded ExecutionStatus = "OUTPUT_LIMIT_EXCEEDED"
+
 	// Future phases:
-	StatusQueued   ExecutionStatus = "QUEUED"
-	StatusRunning  ExecutionStatus = "RUNNING"
-	StatusTimedOut ExecutionStatus = "TIMED_OUT"
+	StatusQueued  ExecutionStatus = "QUEUED"
+	StatusRunning ExecutionStatus = "RUNNING"
 )
 
 type ExecutionRequest struct {

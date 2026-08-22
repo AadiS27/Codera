@@ -29,7 +29,7 @@ func main() {
 	slog.SetDefault(log)
 
 	// Initialize services
-	execService := execution.NewService()
+	execService := execution.NewService(cfg)
 
 	// Initialize server
 	srv := server.New(cfg, log, execService)

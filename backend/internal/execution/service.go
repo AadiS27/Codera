@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/domain"
 )
 
@@ -12,13 +13,15 @@ type Executor interface {
 }
 
 type Service struct {
+	config    *config.Config
 	executors map[string]Executor
 }
 
-func NewService() *Service {
+func NewService(cfg *config.Config) *Service {
 	return &Service{
+		config: cfg,
 		executors: map[string]Executor{
-			"java": NewJavaExecutor(),
+			"java": NewJavaExecutor(cfg),
 		},
 	}
 }

@@ -1,21 +1,36 @@
 package execution
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/domain"
 )
 
-type JavaExecutor struct{}
+type JavaExecutor struct {
+	config *config.Config
+}
 
-func NewJavaExecutor() *JavaExecutor {
-	return &JavaExecutor{}
+func NewJavaExecutor(cfg *config.Config) *JavaExecutor {
+	return &JavaExecutor{config: cfg}
+}
+
+func isPlatformError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return false // Process ran but failed, this is a user error
+	}
+	return true
 }
 
 func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest) (domain.ExecutionResult, error) {
@@ -33,64 +48,102 @@ func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest)
 	}
 
 	// Step 3: Compile
-	javacCmd := exec.CommandContext(ctx, "javac", "-source", "1.8", "-target", "1.8", "Main.java")
-	javacCmd.Dir = workspace
+	compileOpts := RunOptions{
+		Ctx:         ctx,
+		Command:     "javac",
+		Args:        []string{"-source", "1.8", "-target", "1.8", "Main.java"},
+		Dir:         workspace,
+		StdoutLimit: j.config.MaxStdoutBytes,
+		StderrLimit: j.config.MaxStderrBytes,
+		Timeout:     j.config.CompileTimeout,
+	}
 
-	var compileStderr bytes.Buffer
-	javacCmd.Stderr = &compileStderr
-	// Standard output usually empty for javac, but we can capture it if needed
-	var compileStdout bytes.Buffer
-	javacCmd.Stdout = &compileStdout
+	compileRes := RunProcess(compileOpts)
+	if isPlatformError(compileRes.Error) {
+		return domain.ExecutionResult{}, fmt.Errorf("failed to compile process (platform): %w", compileRes.Error)
+	}
 
-	err = javacCmd.Run()
-	if err != nil {
-		// Compilation failed
-		exitCode := 1
-		if exitError, ok := err.(*exec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-		}
+	if compileRes.Timeout {
+		return domain.ExecutionResult{
+			Status:   domain.StatusCompilationTimeout,
+			Stdout:   compileRes.Stdout,
+			Stderr:   compileRes.Stderr,
+			ExitCode: compileRes.ExitCode,
+		}, nil
+	}
 
+	if compileRes.OutputLimit {
+		return domain.ExecutionResult{
+			Status:   domain.StatusOutputLimitExceeded,
+			Stdout:   compileRes.Stdout,
+			Stderr:   compileRes.Stderr,
+			ExitCode: compileRes.ExitCode,
+		}, nil
+	}
+
+	if compileRes.ExitCode != 0 {
 		return domain.ExecutionResult{
 			Status:   domain.StatusCompilationError,
-			Stdout:   compileStdout.String(),
-			Stderr:   compileStderr.String(),
-			ExitCode: exitCode,
-		}, nil // Note: nil error because it's a user failure, not platform failure
+			Stdout:   compileRes.Stdout,
+			Stderr:   compileRes.Stderr,
+			ExitCode: compileRes.ExitCode,
+		}, nil
 	}
 
 	// Step 5: Run
-	javaCmd := exec.CommandContext(ctx, "java", "Main")
-	javaCmd.Dir = workspace
-
+	var stdinReader io.Reader
 	if req.Input != "" {
-		javaCmd.Stdin = strings.NewReader(req.Input)
+		stdinReader = strings.NewReader(req.Input)
 	}
 
-	var runStdout bytes.Buffer
-	var runStderr bytes.Buffer
-	javaCmd.Stdout = &runStdout
-	javaCmd.Stderr = &runStderr
+	runOpts := RunOptions{
+		Ctx:         ctx,
+		Command:     "java",
+		Args:        []string{"Main"},
+		Dir:         workspace,
+		Stdin:       stdinReader,
+		StdoutLimit: j.config.MaxStdoutBytes,
+		StderrLimit: j.config.MaxStderrBytes,
+		Timeout:     j.config.RunTimeout,
+	}
 
-	err = javaCmd.Run()
-	if err != nil {
-		exitCode := 1
-		if exitError, ok := err.(*exec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-		}
+	runRes := RunProcess(runOpts)
+	if isPlatformError(runRes.Error) {
+		return domain.ExecutionResult{}, fmt.Errorf("failed to run process (platform): %w", runRes.Error)
+	}
 
+	if runRes.Timeout {
+		return domain.ExecutionResult{
+			Status:   domain.StatusTimeLimitExceeded,
+			Stdout:   runRes.Stdout,
+			Stderr:   runRes.Stderr,
+			ExitCode: runRes.ExitCode,
+		}, nil
+	}
+
+	if runRes.OutputLimit {
+		return domain.ExecutionResult{
+			Status:   domain.StatusOutputLimitExceeded,
+			Stdout:   runRes.Stdout,
+			Stderr:   runRes.Stderr,
+			ExitCode: runRes.ExitCode,
+		}, nil
+	}
+
+	if runRes.ExitCode != 0 {
 		return domain.ExecutionResult{
 			Status:   domain.StatusRuntimeError,
-			Stdout:   runStdout.String(),
-			Stderr:   runStderr.String(),
-			ExitCode: exitCode,
+			Stdout:   runRes.Stdout,
+			Stderr:   runRes.Stderr,
+			ExitCode: runRes.ExitCode,
 		}, nil
 	}
 
 	// Step 6: Classify result as SUCCESS
 	return domain.ExecutionResult{
 		Status:   domain.StatusSuccess,
-		Stdout:   runStdout.String(),
-		Stderr:   runStderr.String(),
+		Stdout:   runRes.Stdout,
+		Stderr:   runRes.Stderr,
 		ExitCode: 0,
 	}, nil
 }
