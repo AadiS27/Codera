@@ -9,10 +9,12 @@ const (
 	StatusRuntimeError        ExecutionStatus = "RUNTIME_ERROR"
 	StatusTimeLimitExceeded   ExecutionStatus = "TIME_LIMIT_EXCEEDED"
 	StatusOutputLimitExceeded ExecutionStatus = "OUTPUT_LIMIT_EXCEEDED"
+	StatusInternalError       ExecutionStatus = "INTERNAL_ERROR"
 
-	// Future phases:
-	StatusQueued  ExecutionStatus = "QUEUED"
-	StatusRunning ExecutionStatus = "RUNNING"
+	// API states (mapped from job status)
+	StatusQueued      ExecutionStatus = "QUEUED"
+	StatusRunning     ExecutionStatus = "RUNNING"
+	StatusDeadLetter  ExecutionStatus = "DEAD_LETTERED"
 )
 
 type ExecutionRequest struct {

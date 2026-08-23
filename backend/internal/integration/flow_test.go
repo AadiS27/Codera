@@ -88,9 +88,12 @@ func TestRedisQueueAndPostgresIntegration(t *testing.T) {
 		t.Fatalf("Expected job ID %s, got %s", job.ID, msg.JobID)
 	}
 
-	// 4. Mark Running
+	// 4. Claim and Mark Running
 	leaseDur := 10 * time.Second
-	if err := store.MarkRunning(ctx, msg.JobID, "worker-1", leaseDur); err != nil {
+	if err := store.Claim(ctx, msg.JobID, "worker-1", leaseDur); err != nil {
+		t.Fatalf("Claim failed: %v", err)
+	}
+	if err := store.MarkRunning(ctx, msg.JobID, "worker-1"); err != nil {
 		t.Fatalf("MarkRunning failed: %v", err)
 	}
 
@@ -129,12 +132,15 @@ func TestDuplicateDeliveryProtection(t *testing.T) {
 	defer pgPool.Exec(ctx, "DELETE FROM executions WHERE id = $1", job.ID)
 
 	// Simulate Worker A claiming it successfully
-	if err := store.MarkRunning(ctx, job.ID, "worker-A", 10*time.Second); err != nil {
+	if err := store.Claim(ctx, job.ID, "worker-A", 10*time.Second); err != nil {
 		t.Fatalf("Worker A claim failed: %v", err)
+	}
+	if err := store.MarkRunning(ctx, job.ID, "worker-A"); err != nil {
+		t.Fatalf("Worker A MarkRunning failed: %v", err)
 	}
 
 	// Simulate Worker B receiving a duplicate delivery of the SAME job and trying to claim it
-	err := store.MarkRunning(ctx, job.ID, "worker-B", 10*time.Second)
+	err := store.Claim(ctx, job.ID, "worker-B", 10*time.Second)
 	if err != jobs.ErrInvalidState {
 		t.Fatalf("Worker B should have failed with ErrInvalidState, got %v", err)
 	}

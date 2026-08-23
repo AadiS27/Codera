@@ -21,6 +21,10 @@ func NewPostgresJobStore(pool *pgxpool.Pool) *PostgresJobStore {
 	}
 }
 
+func (s *PostgresJobStore) Pool() *pgxpool.Pool {
+	return s.pool
+}
+
 func (s *PostgresJobStore) Create(ctx context.Context, job *ExecutionJob) error {
 	if job.Status != StatusQueued {
 		return ErrInvalidState
@@ -28,10 +32,17 @@ func (s *PostgresJobStore) Create(ctx context.Context, job *ExecutionJob) error 
 
 	query := `
 		INSERT INTO executions (
-			id, language, source_code, input, job_status, created_at
+			id, language, source_code, input, job_status, created_at, max_attempts
 		) VALUES (
-			$1, $2, $3, $4, $5, $6
+			$1, $2, $3, $4, $5, $6, $7
 		)`
+
+	// Default max attempts is 5, but we can set it if provided on the job struct. 
+	// For now let's default to 5 in code to be explicit.
+	maxAttempts := job.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
 
 	_, err := s.pool.Exec(ctx, query,
 		job.ID,
@@ -40,6 +51,7 @@ func (s *PostgresJobStore) Create(ctx context.Context, job *ExecutionJob) error 
 		job.Input,
 		string(job.Status),
 		job.CreatedAt,
+		maxAttempts,
 	)
 
 	if err != nil {
@@ -52,7 +64,9 @@ func (s *PostgresJobStore) Get(ctx context.Context, id string) (*ExecutionJob, e
 	query := `
 		SELECT 
 			id, language, source_code, input, job_status, result_status,
-			stdout, stderr, exit_code, created_at, started_at, completed_at
+			stdout, stderr, exit_code, created_at, claimed_at, started_at, completed_at,
+			worker_id, attempt_count, max_attempts, next_retry_at, lease_expires_at, 
+			last_error, dead_lettered_at, last_dispatched_at
 		FROM executions
 		WHERE id = $1`
 
@@ -74,8 +88,17 @@ func (s *PostgresJobStore) Get(ctx context.Context, id string) (*ExecutionJob, e
 		&stderr,
 		&exitCode,
 		&job.CreatedAt,
+		&job.ClaimedAt,
 		&job.StartedAt,
 		&job.CompletedAt,
+		&job.WorkerID,
+		&job.AttemptCount,
+		&job.MaxAttempts,
+		&job.NextRetryAt,
+		&job.LeaseExpiresAt,
+		&job.LastError,
+		&job.DeadLetteredAt,
+		&job.LastDispatchedAt,
 	)
 
 	if err != nil {
@@ -107,20 +130,45 @@ func (s *PostgresJobStore) Get(ctx context.Context, id string) (*ExecutionJob, e
 	return &job, nil
 }
 
-func (s *PostgresJobStore) MarkRunning(ctx context.Context, id string, workerID string, leaseDuration time.Duration) error {
+func (s *PostgresJobStore) Claim(ctx context.Context, id string, workerID string, leaseDuration time.Duration) error {
 	query := `
 		UPDATE executions 
-		SET job_status = $1, started_at = NOW(), worker_id = $2, lease_expires_at = NOW() + $3::interval
-		WHERE id = $4 AND job_status = $5`
+		SET 
+			job_status = $1, 
+			worker_id = $2, 
+			claimed_at = NOW(), 
+			lease_expires_at = NOW() + $3::interval,
+			attempt_count = attempt_count + 1
+		WHERE 
+			id = $4 
+			AND job_status = $5
+			AND (next_retry_at IS NULL OR next_retry_at <= NOW())`
 
 	leaseInterval := fmt.Sprintf("%f seconds", leaseDuration.Seconds())
-	cmd, err := s.pool.Exec(ctx, query, string(StatusRunning), workerID, leaseInterval, id, string(StatusQueued))
+	cmd, err := s.pool.Exec(ctx, query, string(StatusClaimed), workerID, leaseInterval, id, string(StatusQueued))
+	if err != nil {
+		return fmt.Errorf("failed to claim job: %w", err)
+	}
+
+	if cmd.RowsAffected() == 0 {
+		return ErrInvalidState
+	}
+
+	return nil
+}
+
+func (s *PostgresJobStore) MarkRunning(ctx context.Context, id string, workerID string) error {
+	query := `
+		UPDATE executions 
+		SET job_status = $1, started_at = NOW()
+		WHERE id = $2 AND job_status = $3 AND worker_id = $4`
+
+	cmd, err := s.pool.Exec(ctx, query, string(StatusRunning), id, string(StatusClaimed), workerID)
 	if err != nil {
 		return fmt.Errorf("failed to mark running: %w", err)
 	}
 
 	if cmd.RowsAffected() == 0 {
-		// Could mean it doesn't exist, or it's not QUEUED anymore.
 		return ErrInvalidState
 	}
 
@@ -163,12 +211,77 @@ func (s *PostgresJobStore) Complete(ctx context.Context, id string, workerID str
 	return nil
 }
 
-// FindQueued returns up to `limit` jobs that are currently QUEUED, ordered by creation time.
+func (s *PostgresJobStore) FailJob(ctx context.Context, id string, workerID string, errMsg string, backoff time.Duration) error {
+	// Transition to either QUEUED (with retry) or DEAD_LETTERED
+	query := `
+		UPDATE executions
+		SET 
+			job_status = CASE 
+				WHEN attempt_count < max_attempts THEN $1::text 
+				ELSE $2::text 
+			END,
+			worker_id = NULL,
+			lease_expires_at = NULL,
+			last_error = $3,
+			next_retry_at = CASE
+				WHEN attempt_count < max_attempts THEN NOW() + $4::interval
+				ELSE NULL
+			END,
+			dead_lettered_at = CASE
+				WHEN attempt_count >= max_attempts THEN NOW()
+				ELSE NULL
+			END
+		WHERE id = $5 AND worker_id = $6 AND job_status IN ($7, $8)`
+
+	backoffInterval := fmt.Sprintf("%f seconds", backoff.Seconds())
+	cmd, err := s.pool.Exec(ctx, query,
+		string(StatusQueued),
+		string(StatusDeadLettered),
+		errMsg,
+		backoffInterval,
+		id,
+		workerID,
+		string(StatusClaimed),
+		string(StatusRunning),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to fail job: %w", err)
+	}
+
+	if cmd.RowsAffected() == 0 {
+		return ErrInvalidState
+	}
+
+	return nil
+}
+
+func (s *PostgresJobStore) RenewLease(ctx context.Context, id string, workerID string, leaseDuration time.Duration) error {
+	query := `
+		UPDATE executions
+		SET lease_expires_at = NOW() + $1::interval
+		WHERE id = $2 AND job_status IN ($3, $4) AND worker_id = $5`
+
+	leaseInterval := fmt.Sprintf("%f seconds", leaseDuration.Seconds())
+	cmd, err := s.pool.Exec(ctx, query, leaseInterval, id, string(StatusClaimed), string(StatusRunning), workerID)
+	
+	if err != nil {
+		return fmt.Errorf("failed to renew lease: %w", err)
+	}
+
+	if cmd.RowsAffected() == 0 {
+		return ErrInvalidState // Job might be completed, or ownership lost
+	}
+
+	return nil
+}
+
 func (s *PostgresJobStore) FindQueued(ctx context.Context, limit int) ([]string, error) {
 	query := `
 		SELECT id 
 		FROM executions 
-		WHERE job_status = $1
+		WHERE job_status = $1 
+		  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
 		ORDER BY created_at ASC
 		LIMIT $2`
 
@@ -189,67 +302,12 @@ func (s *PostgresJobStore) FindQueued(ctx context.Context, limit int) ([]string,
 	return ids, rows.Err()
 }
 
-// RecoverInterruptedRunning finds any RUNNING jobs and forcefully completes them with an INTERNAL_ERROR.
 func (s *PostgresJobStore) RecoverInterruptedRunning(ctx context.Context) (int64, error) {
-	query := `
-		UPDATE executions
-		SET 
-			job_status = $1,
-			result_status = $2,
-			stderr = $3,
-			exit_code = -1,
-			completed_at = NOW()
-		WHERE job_status = $4`
-
-	cmd, err := s.pool.Exec(ctx, query,
-		string(StatusCompleted),
-		string(domain.StatusRuntimeError), // Map platform error to Runtime Error for now
-		"Internal Platform Error: Job interrupted during shutdown",
-		string(StatusRunning),
-	)
-
-	if err != nil {
-		return 0, fmt.Errorf("failed to recover interrupted jobs: %w", err)
-	}
-
-	return cmd.RowsAffected(), nil
-}
-// RenewLease extends the lease for a running job owned by a specific worker.
-func (s *PostgresJobStore) RenewLease(ctx context.Context, id string, workerID string, leaseDuration time.Duration) error {
-	query := `
-		UPDATE executions
-		SET lease_expires_at = NOW() + $1::interval
-		WHERE id = $2 AND job_status = $3 AND worker_id = $4`
-
-	leaseInterval := fmt.Sprintf("%f seconds", leaseDuration.Seconds())
-	cmd, err := s.pool.Exec(ctx, query, leaseInterval, id, string(StatusRunning), workerID)
-	
-	if err != nil {
-		return fmt.Errorf("failed to renew lease: %w", err)
-	}
-
-	if cmd.RowsAffected() == 0 {
-		return ErrInvalidState // Job might be completed, or ownership lost
-	}
-
-	return nil
+	// This method might be obsolete in Phase 7 because we rely on lease expiry, but keep for legacy.
+	return 0, nil
 }
 
-// RecoverExpiredLeases finds RUNNING jobs with expired leases and resets them to QUEUED for redispatch.
-// This is the At-Least-Once safety net for worker crashes without pending redis message recovery.
 func (s *PostgresJobStore) RecoverExpiredLeases(ctx context.Context) (int64, error) {
-	query := `
-		UPDATE executions
-		SET 
-			job_status = $1,
-			worker_id = NULL,
-			lease_expires_at = NULL
-		WHERE job_status = $2 AND lease_expires_at < NOW()`
-
-	cmd, err := s.pool.Exec(ctx, query, string(StatusQueued), string(StatusRunning))
-	if err != nil {
-		return 0, fmt.Errorf("failed to recover expired leases: %w", err)
-	}
-
-	return cmd.RowsAffected(), nil
+	// Will be replaced by AbandonedJobs recovery in internal/recovery/
+	return 0, nil
 }

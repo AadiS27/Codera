@@ -19,6 +19,7 @@ import (
 	"github.com/codera/code-executor/internal/sandbox/docker"
 	"github.com/codera/code-executor/internal/server"
 	"github.com/codera/code-executor/internal/worker"
+	"github.com/codera/code-executor/internal/recovery"
 )
 
 func main() {
@@ -74,19 +75,13 @@ func main() {
 
 	jobService := jobs.NewService(jobStore, redisQueue)
 
-	// Run Startup Recovery BEFORE workers or HTTP server start
-	if err := jobs.RunStartupRecovery(context.Background(), jobStore, redisQueue, log); err != nil {
-		log.Error("Failed to run startup recovery", "error", err)
-		os.Exit(1)
-	}
-
 	role := cfg.Role
 	log.Info("Starting application", "role", role, "instance_id", cfg.InstanceID)
 
 	var workerPool *worker.Pool
 	if role == "worker" || role == "all" {
 		// Initialize and Start Worker Pool
-		workerPool = worker.NewPool(log, redisQueue, jobStore, execService, cfg.ExecutionWorkers, cfg.InstanceID)
+		workerPool = worker.NewPool(log, redisQueue, jobStore, execService, cfg.ExecutionWorkers, cfg.InstanceID, cfg.WorkerHeartbeatInterval, cfg.WorkerShutdownTimeout)
 		workerPool.Start(context.Background())
 
 		// Start Pending Message Recovery
@@ -97,8 +92,9 @@ func main() {
 	var srv *server.Server
 	serverErrors := make(chan error, 1)
 	if role == "api" || role == "all" {
-		// Start Background Reconciler
-		go jobs.StartReconciler(context.Background(), jobStore, redisQueue, log, cfg.ReconciliationInterval, cfg.ReconciliationBatchSize)
+		// Start Background Recovery Service
+		recoverySvc := recovery.NewService(database.Pool, log, redisQueue, cfg.RecoveryInterval, cfg.WorkerHeartbeatTimeout)
+		go recoverySvc.Start(context.Background())
 
 		// Initialize server
 		srv = server.New(cfg, log, jobService, database, redisDB)

@@ -46,6 +46,16 @@ type Config struct {
 	RedisPendingIdleTimeout     time.Duration
 	RedisPendingClaimBatchSize  int64
 	RedisStreamMaxLen           int64
+
+	WorkerHeartbeatInterval time.Duration
+	WorkerHeartbeatTimeout  time.Duration
+	JobLeaseDuration        time.Duration
+	JobLeaseRenewInterval   time.Duration
+	RecoveryInterval        time.Duration
+	MaxAttempts             int
+	RetryBaseDelay          time.Duration
+	RetryMaxDelay           time.Duration
+	WorkerShutdownTimeout   time.Duration
 }
 
 func Load() (*Config, error) {
@@ -191,6 +201,42 @@ func Load() (*Config, error) {
 
 	cfg.RedisPendingClaimBatchSize, _ = parseInt("REDIS_PENDING_CLAIM_BATCH_SIZE", 100)
 	cfg.RedisStreamMaxLen, _ = parseInt("REDIS_STREAM_MAXLEN", 10000)
+
+	cfg.WorkerHeartbeatInterval, _ = time.ParseDuration(os.Getenv("WORKER_HEARTBEAT_INTERVAL"))
+	if cfg.WorkerHeartbeatInterval == 0 {
+		cfg.WorkerHeartbeatInterval = 5 * time.Second
+	}
+	cfg.WorkerHeartbeatTimeout, _ = time.ParseDuration(os.Getenv("WORKER_HEARTBEAT_TIMEOUT"))
+	if cfg.WorkerHeartbeatTimeout == 0 {
+		cfg.WorkerHeartbeatTimeout = 20 * time.Second
+	}
+	cfg.JobLeaseDuration, _ = time.ParseDuration(os.Getenv("JOB_LEASE_DURATION"))
+	if cfg.JobLeaseDuration == 0 {
+		cfg.JobLeaseDuration = 30 * time.Second
+	}
+	cfg.JobLeaseRenewInterval, _ = time.ParseDuration(os.Getenv("JOB_LEASE_RENEW_INTERVAL"))
+	if cfg.JobLeaseRenewInterval == 0 {
+		cfg.JobLeaseRenewInterval = 10 * time.Second
+	}
+	cfg.RecoveryInterval, _ = time.ParseDuration(os.Getenv("RECOVERY_INTERVAL"))
+	if cfg.RecoveryInterval == 0 {
+		cfg.RecoveryInterval = 5 * time.Second
+	}
+	maxAtt, _ := parseInt("MAX_ATTEMPTS", 5)
+	cfg.MaxAttempts = int(maxAtt)
+
+	cfg.RetryBaseDelay, _ = time.ParseDuration(os.Getenv("RETRY_BASE_DELAY"))
+	if cfg.RetryBaseDelay == 0 {
+		cfg.RetryBaseDelay = 1 * time.Second
+	}
+	cfg.RetryMaxDelay, _ = time.ParseDuration(os.Getenv("RETRY_MAX_DELAY"))
+	if cfg.RetryMaxDelay == 0 {
+		cfg.RetryMaxDelay = 1 * time.Minute
+	}
+	cfg.WorkerShutdownTimeout, _ = time.ParseDuration(os.Getenv("WORKER_SHUTDOWN_TIMEOUT"))
+	if cfg.WorkerShutdownTimeout == 0 {
+		cfg.WorkerShutdownTimeout = 30 * time.Second
+	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
