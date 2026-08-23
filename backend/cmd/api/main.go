@@ -26,6 +26,8 @@ import (
 	"github.com/codera/code-executor/internal/language/go"
 	"github.com/codera/code-executor/internal/language/cpp"
 	"github.com/codera/code-executor/internal/sandbox"
+	"github.com/codera/code-executor/internal/repository"
+	"github.com/codera/code-executor/internal/judge"
 )
 
 func main() {
@@ -99,10 +101,22 @@ func main() {
 	role := cfg.Role
 	log.Info("Starting application", "role", role, "instance_id", cfg.InstanceID)
 
+	// Initialize Repositories
+	probRepo := repository.NewPostgresProblemRepository(database.Pool)
+	testCaseRepo := repository.NewPostgresTestCaseRepository(database.Pool)
+	subRepo := repository.NewPostgresSubmissionRepository(database.Pool)
+
+	// Initialize Judge Engine
+	compRegistry := judge.NewComparatorRegistry()
+	compRegistry.Register(domain.ComparisonModeExact, &judge.ExactComparator{})
+	compRegistry.Register(domain.ComparisonModeWhitespace, &judge.WhitespaceComparator{})
+	
+	judgeEngine := judge.NewEngine(cfg, langRegistry, sb, compRegistry, subRepo, probRepo, testCaseRepo)
+
 	var workerPool *worker.Pool
 	if role == "worker" || role == "all" {
 		// Initialize and Start Worker Pool
-		workerPool = worker.NewPool(log, redisQueue, jobStore, execService, cfg.ExecutionWorkers, cfg.InstanceID, cfg.WorkerHeartbeatInterval, cfg.WorkerShutdownTimeout)
+		workerPool = worker.NewPool(log, redisQueue, jobStore, judgeEngine, execService, cfg.ExecutionWorkers, cfg.InstanceID, cfg.WorkerHeartbeatInterval, cfg.WorkerShutdownTimeout)
 		workerPool.Start(context.Background())
 
 		// Start Pending Message Recovery
@@ -117,8 +131,13 @@ func main() {
 		recoverySvc := recovery.NewService(database.Pool, log, redisQueue, cfg.RecoveryInterval, cfg.WorkerHeartbeatTimeout)
 		go recoverySvc.Start(context.Background())
 
+		// Initialize server handlers
+		probHandler := server.NewProblemHandler(probRepo, testCaseRepo)
+		subHandler := server.NewSubmissionHandler(subRepo, probRepo, redisQueue, langRegistry)
+		runHandler := server.NewRunHandler(jobStore, langRegistry)
+
 		// Initialize server
-		srv = server.New(cfg, log, jobService, database, redisDB)
+		srv = server.New(cfg, log, jobService, probHandler, subHandler, runHandler, database, redisDB)
 
 		// Start the service listening for requests.
 		go func() {

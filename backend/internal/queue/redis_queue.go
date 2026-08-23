@@ -39,7 +39,7 @@ func (q *RedisQueue) EnsureGroupExists(ctx context.Context) error {
 	return nil
 }
 
-func (q *RedisQueue) Enqueue(ctx context.Context, jobID string) error {
+func (q *RedisQueue) Enqueue(ctx context.Context, jobID, jobType string) error {
 	if q.closed.Load() {
 		return ErrQueueClosed
 	}
@@ -48,7 +48,8 @@ func (q *RedisQueue) Enqueue(ctx context.Context, jobID string) error {
 		Stream: q.stream,
 		MaxLen: q.maxLen,
 		Values: map[string]interface{}{
-			"job_id": jobID,
+			"job_id":   jobID,
+			"job_type": jobType,
 		},
 	}).Err()
 
@@ -87,16 +88,20 @@ func (q *RedisQueue) Consume(ctx context.Context, consumerName string) (QueueMes
 
 		if len(streams) > 0 && len(streams[0].Messages) > 0 {
 			msg := streams[0].Messages[0]
-			jobID, ok := msg.Values["job_id"].(string)
-			if !ok {
-				// Bad message format, maybe ACK it and move on?
-				// For now, let's just log and continue, but we don't have a logger injected.
+			jobID, ok1 := msg.Values["job_id"].(string)
+			jobType, ok2 := msg.Values["job_type"].(string)
+			if !ok1 {
+				// Bad message format, ignore and maybe ACK
 				continue
+			}
+			if !ok2 {
+				jobType = "run" // Default to run for backwards compatibility with pending jobs
 			}
 
 			return QueueMessage{
-				ID:    msg.ID,
-				JobID: jobID,
+				ID:      msg.ID,
+				JobID:   jobID,
+				JobType: jobType,
 			}, nil
 		}
 	}

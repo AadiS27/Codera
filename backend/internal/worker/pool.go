@@ -17,6 +17,7 @@ type Pool struct {
 	logger      *slog.Logger
 	queue       queue.JobQueue
 	store       *jobs.PostgresJobStore
+	engine      *judge.Engine
 	execService *execution.Service
 	numWorkers  int64
 	instanceID  string
@@ -28,11 +29,12 @@ type Pool struct {
 	status       WorkerStatus
 }
 
-func NewPool(logger *slog.Logger, q queue.JobQueue, s *jobs.PostgresJobStore, e *execution.Service, workers int64, instanceID string, hbInterval, shutdownTimeout time.Duration) *Pool {
+func NewPool(logger *slog.Logger, q queue.JobQueue, s *jobs.PostgresJobStore, eng *judge.Engine, e *execution.Service, workers int64, instanceID string, hbInterval, shutdownTimeout time.Duration) *Pool {
 	return &Pool{
 		logger:          logger,
 		queue:           q,
 		store:           s,
+		engine:          eng,
 		execService:     e,
 		numWorkers:      workers,
 		instanceID:      instanceID,
@@ -106,8 +108,30 @@ func (p *Pool) processJobSafely(ctx context.Context, msg queue.QueueMessage, wor
 		}
 	}()
 
-	log.Info("Processing job", "job_id", msg.JobID, "msg_id", msg.ID)
+	log.Info("Processing job", "job_id", msg.JobID, "job_type", msg.JobType, "msg_id", msg.ID)
 	
+	if msg.JobType == "submission" {
+		p.processSubmission(ctx, msg, workerName, log)
+	} else {
+		p.processRun(ctx, msg, workerName, log)
+	}
+}
+
+func (p *Pool) processSubmission(ctx context.Context, msg queue.QueueMessage, workerName string, log *slog.Logger) {
+	// For submissions, the JudgeEngine takes care of everything (status updates, completion, etc)
+	// We just need to give it context.
+	err := p.engine.Judge(ctx, msg.JobID)
+	if err != nil {
+		log.Error("JudgeEngine failed", "submission_id", msg.JobID, "error", err)
+		// We could implement retry logic, but JudgeEngine saves verdicts.
+	}
+	
+	if err := p.queue.Ack(context.Background(), msg.ID); err != nil {
+		log.Error("Failed to ACK redis message for submission", "msg_id", msg.ID, "error", err)
+	}
+}
+
+func (p *Pool) processRun(ctx context.Context, msg queue.QueueMessage, workerName string, log *slog.Logger) {
 	leaseDuration := 30 * time.Second
 
 	// 1. Claim Job

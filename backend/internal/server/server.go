@@ -22,9 +22,13 @@ type Server struct {
 	shuttingDown atomic.Bool
 	db          *db.DB
 	redis       *db.RedisDB
+
+	probHandler *ProblemHandler
+	subHandler  *SubmissionHandler
+	runHandler  *RunHandler
 }
 
-func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, database *db.DB, redisDB *db.RedisDB) *Server {
+func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, probHandler *ProblemHandler, subHandler *SubmissionHandler, runHandler *RunHandler, database *db.DB, redisDB *db.RedisDB) *Server {
 	mux := http.NewServeMux()
 
 	s := &Server{
@@ -33,11 +37,15 @@ func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, data
 		execHandler: NewExecutionHandler(jobService),
 		db:          database,
 		redis:       redisDB,
+		probHandler: probHandler,
+		subHandler:  subHandler,
+		runHandler:  runHandler,
 	}
 
 	mux.HandleFunc("/health/live", s.handleHealthLive())
 	mux.HandleFunc("/health/ready", s.handleHealthReady())
 	mux.HandleFunc("/api/v1/version", s.handleVersion())
+	// Old execution API (keep for backward compat or deprecate)
 	mux.HandleFunc("/api/v1/executions", func(w http.ResponseWriter, r *http.Request) {
 		if s.shuttingDown.Load() {
 			http.Error(w, "Service Unavailable - Shutting Down", http.StatusServiceUnavailable)
@@ -46,6 +54,11 @@ func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, data
 		s.execHandler.HandleExecute()(w, r)
 	})
 	mux.HandleFunc("/api/v1/executions/", s.execHandler.HandleGetExecution())
+
+	// Register new Phase 10 API Handlers
+	s.probHandler.RegisterRoutes(mux)
+	s.subHandler.RegisterRoutes(mux)
+	s.runHandler.RegisterRoutes(mux)
 
 	// Apply Middlewares: Recovery -> RequestID -> RequestLogger
 	handler := phttp.Chain(mux,
