@@ -21,9 +21,10 @@ type Server struct {
 	execHandler *ExecutionHandler
 	shuttingDown atomic.Bool
 	db          *db.DB
+	redis       *db.RedisDB
 }
 
-func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, database *db.DB) *Server {
+func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, database *db.DB, redisDB *db.RedisDB) *Server {
 	mux := http.NewServeMux()
 
 	s := &Server{
@@ -31,6 +32,7 @@ func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, data
 		config:      cfg,
 		execHandler: NewExecutionHandler(jobService),
 		db:          database,
+		redis:       redisDB,
 	}
 
 	mux.HandleFunc("/health/live", s.handleHealthLive())
@@ -90,7 +92,19 @@ func (s *Server) handleHealthReady() http.HandlerFunc {
 			if err := s.db.Ping(ctx); err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusServiceUnavailable)
-				json.NewEncoder(w).Encode(map[string]string{"status": "database_unavailable"})
+				json.NewEncoder(w).Encode(map[string]string{"status": "postgres_unavailable"})
+				return
+			}
+		}
+
+		if s.redis != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			
+			if err := s.redis.Ping(ctx); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]string{"status": "redis_unavailable"})
 				return
 			}
 		}

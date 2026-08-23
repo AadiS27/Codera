@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/codera/code-executor/internal/domain"
 )
@@ -23,9 +24,9 @@ type JobStore interface {
 	
 	// MarkRunning atomically transitions a job from QUEUED to RUNNING.
 	// Fails if the job is not in QUEUED state.
-	MarkRunning(ctx context.Context, id string) error
+	MarkRunning(ctx context.Context, id string, workerID string, leaseDuration time.Duration) error
 	
 	// Complete atomically transitions a job from RUNNING to COMPLETED and stores the result.
 	// Fails if the job is not in RUNNING state.
-	Complete(ctx context.Context, id string, result domain.ExecutionResult) error
+	Complete(ctx context.Context, id string, workerID string, result domain.ExecutionResult) error
 }

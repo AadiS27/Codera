@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Config struct {
@@ -32,6 +34,18 @@ type Config struct {
 	DBMinConns              int32
 	ReconciliationInterval  time.Duration
 	ReconciliationBatchSize int32
+
+	Role       string
+	InstanceID string
+
+	RedisAddr                   string
+	RedisPassword               string
+	RedisDB                     int
+	RedisStream                 string
+	RedisConsumerGroup          string
+	RedisPendingIdleTimeout     time.Duration
+	RedisPendingClaimBatchSize  int64
+	RedisStreamMaxLen           int64
 }
 
 func Load() (*Config, error) {
@@ -138,6 +152,45 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	cfg.Role = os.Getenv("ROLE")
+	if cfg.Role == "" {
+		cfg.Role = "all" // api, worker, all
+	}
+
+	cfg.InstanceID = os.Getenv("INSTANCE_ID")
+	if cfg.InstanceID == "" {
+		cfg.InstanceID = "instance-" + uuid.New().String()
+	}
+
+	cfg.RedisAddr = os.Getenv("REDIS_ADDR")
+	if cfg.RedisAddr == "" {
+		cfg.RedisAddr = "localhost:6379"
+	}
+	cfg.RedisPassword = os.Getenv("REDIS_PASSWORD")
+	redisDB, _ := parseInt("REDIS_DB", 0)
+	cfg.RedisDB = int(redisDB)
+
+	cfg.RedisStream = os.Getenv("REDIS_STREAM")
+	if cfg.RedisStream == "" {
+		cfg.RedisStream = "execution-jobs"
+	}
+	cfg.RedisConsumerGroup = os.Getenv("REDIS_CONSUMER_GROUP")
+	if cfg.RedisConsumerGroup == "" {
+		cfg.RedisConsumerGroup = "execution-workers"
+	}
+
+	idleStr := os.Getenv("REDIS_PENDING_IDLE_TIMEOUT")
+	if idleStr == "" {
+		idleStr = "30s"
+	}
+	cfg.RedisPendingIdleTimeout, err = time.ParseDuration(idleStr)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.RedisPendingClaimBatchSize, _ = parseInt("REDIS_PENDING_CLAIM_BATCH_SIZE", 100)
+	cfg.RedisStreamMaxLen, _ = parseInt("REDIS_STREAM_MAXLEN", 10000)
 
 	if err := cfg.validate(); err != nil {
 		return nil, err

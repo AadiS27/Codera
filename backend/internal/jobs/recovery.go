@@ -62,7 +62,15 @@ func StartReconciler(ctx context.Context, store *PostgresJobStore, q queue.JobQu
 			logger.Info("Background Reconciler stopped")
 			return
 		case <-ticker.C:
-			// Fetch up to batchSize jobs
+			// 1. Recover expired leases (moves stranded RUNNING back to QUEUED)
+			recovered, err := store.RecoverExpiredLeases(ctx)
+			if err != nil {
+				logger.Error("Failed to recover expired leases", "error", err)
+			} else if recovered > 0 {
+				logger.Warn("Recovered expired leases", "count", recovered)
+			}
+
+			// 2. Fetch up to batchSize jobs
 			jobs, err := store.FindQueued(ctx, int(batchSize))
 			if err != nil {
 				logger.Error("Reconciler failed to query queued jobs", "error", err)

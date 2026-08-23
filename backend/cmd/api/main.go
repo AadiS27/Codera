@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/db"
@@ -53,66 +54,87 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Jobs layer with Postgres
+	// Connect to Redis
+	redisDB, err := db.ConnectRedis(context.Background(), cfg, log)
+	if err != nil {
+		log.Error("Failed to connect to redis", "error", err)
+		os.Exit(1)
+	}
+	defer redisDB.Close()
+
+	// Initialize Jobs layer with Postgres and Redis
 	jobStore := jobs.NewPostgresJobStore(database.Pool)
-	jobQueue := queue.NewMemoryQueue(cfg.QueueCapacity)
-	jobService := jobs.NewService(jobStore, jobQueue)
+	redisQueue := queue.NewRedisQueue(redisDB.Client, cfg.RedisStream, cfg.RedisConsumerGroup, cfg.RedisStreamMaxLen)
+	
+	// Create consumer group safely
+	if err := redisQueue.EnsureGroupExists(context.Background()); err != nil {
+		log.Error("Failed to initialize redis consumer group", "error", err)
+		os.Exit(1)
+	}
+
+	jobService := jobs.NewService(jobStore, redisQueue)
 
 	// Run Startup Recovery BEFORE workers or HTTP server start
-	if err := jobs.RunStartupRecovery(context.Background(), jobStore, jobQueue, log); err != nil {
+	if err := jobs.RunStartupRecovery(context.Background(), jobStore, redisQueue, log); err != nil {
 		log.Error("Failed to run startup recovery", "error", err)
 		os.Exit(1)
 	}
 
-	// Initialize and Start Worker Pool
-	workerPool := worker.NewPool(log, jobQueue, jobStore, execService, cfg.ExecutionWorkers)
-	workerPool.Start(context.Background())
+	role := cfg.Role
+	log.Info("Starting application", "role", role, "instance_id", cfg.InstanceID)
 
-	// Start Background Reconciler
-	go jobs.StartReconciler(context.Background(), jobStore, jobQueue, log, cfg.ReconciliationInterval, cfg.ReconciliationBatchSize)
+	var workerPool *worker.Pool
+	if role == "worker" || role == "all" {
+		// Initialize and Start Worker Pool
+		workerPool = worker.NewPool(log, redisQueue, jobStore, execService, cfg.ExecutionWorkers, cfg.InstanceID)
+		workerPool.Start(context.Background())
 
-	// Initialize server
-	srv := server.New(cfg, log, jobService, database)
+		// Start Pending Message Recovery
+		pendingRecovery := jobs.NewPendingRecovery(log, redisDB.Client, jobStore, redisQueue, cfg.RedisStream, cfg.RedisConsumerGroup, cfg.RedisPendingIdleTimeout, cfg.RedisPendingClaimBatchSize)
+		go pendingRecovery.Start(context.Background())
+	}
 
-	// Channel to listen for errors coming from the listener.
+	var srv *server.Server
 	serverErrors := make(chan error, 1)
+	if role == "api" || role == "all" {
+		// Start Background Reconciler
+		go jobs.StartReconciler(context.Background(), jobStore, redisQueue, log, cfg.ReconciliationInterval, cfg.ReconciliationBatchSize)
 
-	// Start the API in a goroutine
-	go func() {
-		log.Info("Starting server", "port", cfg.Port, "env", cfg.Env)
-		serverErrors <- srv.Start()
-	}()
+		// Initialize server
+		srv = server.New(cfg, log, jobService, database, redisDB)
+
+		// Start the service listening for requests.
+		go func() {
+			log.Info("Starting server", "port", cfg.Port, "env", cfg.Env)
+			serverErrors <- srv.Start()
+		}()
+	}
 
 	// Channel to listen for an interrupt or terminate signal from the OS.
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-	// Blocking main and waiting for shutdown.
 	select {
 	case err := <-serverErrors:
-		if !errors.Is(err, http.ErrServerClosed) {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("Server error", "error", err)
 			os.Exit(1)
 		}
-
 	case sig := <-shutdown:
-		log.Info("Graceful shutdown started", "signal", sig, "timeout", cfg.ShutdownTimeout)
+		log.Info("Graceful shutdown started", "signal", sig)
+		defer log.Info("Graceful shutdown completed", "signal", sig)
 
-		// Create context for graceful shutdown timeout
-		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 
-		if err := srv.Shutdown(ctx); err != nil {
-			log.Error("Graceful shutdown did not complete in time", "error", err)
-			if err := srv.Shutdown(context.Background()); err != nil {
-				log.Error("Could not stop server gracefully", "error", err)
+		if srv != nil {
+			if err := srv.Shutdown(ctx); err != nil {
+				log.Error("Graceful shutdown error", "error", err)
 			}
-			os.Exit(1)
 		}
-		log.Info("Graceful shutdown completed")
 
-		// Now wait for workers to finish draining jobs
-		// The shutdown timeout context we created above limits this as well
-		workerPool.Stop(ctx)
+		if workerPool != nil {
+			workerPool.Stop(ctx)
+		}
 	}
 }

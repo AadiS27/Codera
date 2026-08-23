@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/codera/code-executor/internal/config"
-	"github.com/codera/code-executor/internal/jobs"
-	"github.com/codera/code-executor/internal/queue"
 )
 
 func TestEndpoints(t *testing.T) {
@@ -20,15 +18,15 @@ func TestEndpoints(t *testing.T) {
 		Port:            "8080",
 		LogLevel:        "info",
 		ShutdownTimeout: 1 * time.Second,
+		QueueCapacity: 10,
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	// execution service and sandbox not needed for basic routing tests
-	
-	jobStore := jobs.NewMemoryJobStore()
-	jobQueue := queue.NewMemoryQueue(10)
-	jobService := jobs.NewService(jobStore, jobQueue)
 
-	srv := New(cfg, logger, jobService, nil)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	
+	// Server tests focus on HTTP routing and health checks, not the jobs layer execution.
+	// Since we mock the jobs layer in real tests, we will pass nil here for simplicity,
+	// as the health check tests don't use it.
+	srv := New(cfg, logger, nil, nil, nil)
 
 	tests := []struct {
 		name           string
