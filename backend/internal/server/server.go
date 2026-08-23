@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/codera/code-executor/internal/config"
+	"github.com/codera/code-executor/internal/db"
 	"github.com/codera/code-executor/internal/jobs"
 	phttp "github.com/codera/code-executor/internal/platform/http"
 )
@@ -19,15 +20,17 @@ type Server struct {
 	config      *config.Config
 	execHandler *ExecutionHandler
 	shuttingDown atomic.Bool
+	db          *db.DB
 }
 
-func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service) *Server {
+func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, database *db.DB) *Server {
 	mux := http.NewServeMux()
 
 	s := &Server{
 		logger:      logger,
 		config:      cfg,
 		execHandler: NewExecutionHandler(jobService),
+		db:          database,
 	}
 
 	mux.HandleFunc("/health/live", s.handleHealthLive())
@@ -77,6 +80,21 @@ func (s *Server) handleHealthReady() http.HandlerFunc {
 			json.NewEncoder(w).Encode(map[string]string{"status": "shutting_down"})
 			return
 		}
+		
+		// DB Healthcheck is required for readiness
+		if s.db != nil {
+			// Using a short timeout for the ping so readiness doesn't hang forever
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			
+			if err := s.db.Ping(ctx); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]string{"status": "database_unavailable"})
+				return
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

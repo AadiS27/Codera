@@ -26,6 +26,12 @@ type Config struct {
 
 	ExecutionWorkers int64
 	QueueCapacity    int64
+
+	DatabaseURL             string
+	DBMaxConns              int32
+	DBMinConns              int32
+	ReconciliationInterval  time.Duration
+	ReconciliationBatchSize int32
 }
 
 func Load() (*Config, error) {
@@ -101,6 +107,38 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	cfg.DatabaseURL = os.Getenv("DATABASE_URL")
+	if cfg.DatabaseURL == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+
+	maxConns, err := parseInt("DB_MAX_CONNS", 10)
+	if err != nil {
+		return nil, err
+	}
+	cfg.DBMaxConns = int32(maxConns)
+
+	minConns, err := parseInt("DB_MIN_CONNS", 2)
+	if err != nil {
+		return nil, err
+	}
+	cfg.DBMinConns = int32(minConns)
+
+	reconBatch, err := parseInt("RECONCILIATION_BATCH_SIZE", 100)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ReconciliationBatchSize = int32(reconBatch)
+
+	reconIntervalStr := os.Getenv("RECONCILIATION_INTERVAL")
+	if reconIntervalStr == "" {
+		reconIntervalStr = "5s"
+	}
+	cfg.ReconciliationInterval, err = time.ParseDuration(reconIntervalStr)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -162,6 +200,12 @@ func (c *Config) validate() error {
 	}
 	if c.QueueCapacity <= 0 {
 		return errors.New("QUEUE_CAPACITY must be positive")
+	}
+	if c.DBMaxConns <= 0 {
+		return errors.New("DB_MAX_CONNS must be positive")
+	}
+	if c.ReconciliationBatchSize <= 0 {
+		return errors.New("RECONCILIATION_BATCH_SIZE must be positive")
 	}
 	return nil
 }

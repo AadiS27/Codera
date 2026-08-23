@@ -28,7 +28,7 @@ func TestEndpoints(t *testing.T) {
 	jobQueue := queue.NewMemoryQueue(10)
 	jobService := jobs.NewService(jobStore, jobQueue)
 
-	srv := New(cfg, logger, jobService)
+	srv := New(cfg, logger, jobService, nil)
 
 	tests := []struct {
 		name           string

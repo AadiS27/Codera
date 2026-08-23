@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/codera/code-executor/internal/config"
+	"github.com/codera/code-executor/internal/db"
 	"github.com/codera/code-executor/internal/execution"
 	"github.com/codera/code-executor/internal/jobs"
 	"github.com/codera/code-executor/internal/platform/logger"
@@ -38,17 +39,40 @@ func main() {
 	// Initialize Execution Service
 	execService := execution.NewService(cfg, sb)
 
-	// Initialize Jobs layer
-	jobStore := jobs.NewMemoryJobStore()
+	// Connect to Database
+	database, err := db.Connect(context.Background(), cfg, log)
+	if err != nil {
+		log.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer database.Close()
+
+	// Run Database Migrations
+	if err := db.RunMigrations(cfg.DatabaseURL, log); err != nil {
+		log.Error("Failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize Jobs layer with Postgres
+	jobStore := jobs.NewPostgresJobStore(database.Pool)
 	jobQueue := queue.NewMemoryQueue(cfg.QueueCapacity)
 	jobService := jobs.NewService(jobStore, jobQueue)
 
-	// Initialize Worker Pool
+	// Run Startup Recovery BEFORE workers or HTTP server start
+	if err := jobs.RunStartupRecovery(context.Background(), jobStore, jobQueue, log); err != nil {
+		log.Error("Failed to run startup recovery", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize and Start Worker Pool
 	workerPool := worker.NewPool(log, jobQueue, jobStore, execService, cfg.ExecutionWorkers)
 	workerPool.Start(context.Background())
 
+	// Start Background Reconciler
+	go jobs.StartReconciler(context.Background(), jobStore, jobQueue, log, cfg.ReconciliationInterval, cfg.ReconciliationBatchSize)
+
 	// Initialize server
-	srv := server.New(cfg, log, jobService)
+	srv := server.New(cfg, log, jobService, database)
 
 	// Channel to listen for errors coming from the listener.
 	serverErrors := make(chan error, 1)
