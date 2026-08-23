@@ -2,17 +2,16 @@ package execution
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/domain"
 	"github.com/codera/code-executor/internal/sandbox"
+	"github.com/codera/code-executor/internal/sandbox/classifier"
 )
 
 type JavaExecutor struct {
@@ -24,16 +23,6 @@ func NewJavaExecutor(cfg *config.Config, sb sandbox.Runtime) *JavaExecutor {
 	return &JavaExecutor{config: cfg, sandbox: sb}
 }
 
-func isPlatformError(err error) bool {
-	if err == nil {
-		return false
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return false // Process ran but failed, this is a user error
-	}
-	return true
-}
 
 func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest) (domain.ExecutionResult, error) {
 	// Step 1: Create a unique temporary directory on host
@@ -52,8 +41,13 @@ func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest)
 	_ = os.Chmod(workspace, 0777)
 	_ = os.Chmod(sourcePath, 0666)
 
-	// Step 3: Start Sandbox Container
-	containerID, err := j.sandbox.StartContainer(ctx, workspace)
+	// Step 3: Get Profile and Start Sandbox Container
+	profile, err := sandbox.GetProfileForLanguage("java")
+	if err != nil {
+		return domain.ExecutionResult{}, fmt.Errorf("failed to get sandbox profile: %w", err)
+	}
+
+	containerID, err := j.sandbox.StartContainer(ctx, workspace, profile)
 	if err != nil {
 		return domain.ExecutionResult{}, fmt.Errorf("failed to start sandbox: %w", err)
 	}
@@ -63,41 +57,22 @@ func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest)
 	compileOpts := sandbox.ExecOptions{
 		Command:     "javac",
 		Args:        []string{"-source", "1.8", "-target", "1.8", "Main.java"},
-		StdoutLimit: j.config.MaxStdoutBytes,
-		StderrLimit: j.config.MaxStderrBytes,
-		Timeout:     j.config.CompileTimeout,
+		StdoutLimit: profile.MaxOutputBytes,
+		StderrLimit: profile.MaxOutputBytes,
+		Timeout:     j.config.CompileTimeout, // Compile timeout is different from run timeout
 	}
 
 	compileRes := j.sandbox.Exec(ctx, containerID, compileOpts)
-	if isPlatformError(compileRes.Error) {
-		return domain.ExecutionResult{}, fmt.Errorf("failed to compile process (platform): %w", compileRes.Error)
-	}
-
-	if compileRes.Timeout {
-		return domain.ExecutionResult{
-			Status:   domain.StatusCompilationTimeout,
-			Stdout:   compileRes.Stdout,
-			Stderr:   compileRes.Stderr,
-			ExitCode: compileRes.ExitCode,
-		}, nil
-	}
-
-	if compileRes.OutputLimit {
-		return domain.ExecutionResult{
-			Status:   domain.StatusOutputLimitExceeded,
-			Stdout:   compileRes.Stdout,
-			Stderr:   compileRes.Stderr,
-			ExitCode: compileRes.ExitCode,
-		}, nil
-	}
-
-	if compileRes.ExitCode != 0 {
-		return domain.ExecutionResult{
-			Status:   domain.StatusCompilationError,
-			Stdout:   compileRes.Stdout,
-			Stderr:   compileRes.Stderr,
-			ExitCode: compileRes.ExitCode,
-		}, nil
+	
+	// We classify the compile result. Since it's compile phase, we map RUNTIME_ERROR to COMPILATION_ERROR.
+	compileDomainRes := classifier.Classify(compileRes)
+	if compileDomainRes.Status != domain.StatusSuccess {
+		if compileDomainRes.Status == domain.StatusRuntimeError {
+			compileDomainRes.Status = domain.StatusCompilationError
+		} else if compileDomainRes.Status == domain.StatusTimeLimitExceeded {
+			compileDomainRes.Status = domain.StatusCompilationTimeout
+		}
+		return compileDomainRes, nil
 	}
 
 	// Step 5: Run
@@ -110,48 +85,13 @@ func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest)
 		Command:     "java",
 		Args:        []string{"Main"},
 		Stdin:       stdinReader,
-		StdoutLimit: j.config.MaxStdoutBytes,
-		StderrLimit: j.config.MaxStderrBytes,
-		Timeout:     j.config.RunTimeout,
+		StdoutLimit: profile.MaxOutputBytes,
+		StderrLimit: profile.MaxOutputBytes,
+		Timeout:     profile.Timeout,
 	}
 
 	runRes := j.sandbox.Exec(ctx, containerID, runOpts)
-	if isPlatformError(runRes.Error) {
-		return domain.ExecutionResult{}, fmt.Errorf("failed to run process (platform): %w", runRes.Error)
-	}
+	runDomainRes := classifier.Classify(runRes)
 
-	if runRes.Timeout {
-		return domain.ExecutionResult{
-			Status:   domain.StatusTimeLimitExceeded,
-			Stdout:   runRes.Stdout,
-			Stderr:   runRes.Stderr,
-			ExitCode: runRes.ExitCode,
-		}, nil
-	}
-
-	if runRes.OutputLimit {
-		return domain.ExecutionResult{
-			Status:   domain.StatusOutputLimitExceeded,
-			Stdout:   runRes.Stdout,
-			Stderr:   runRes.Stderr,
-			ExitCode: runRes.ExitCode,
-		}, nil
-	}
-
-	if runRes.ExitCode != 0 {
-		return domain.ExecutionResult{
-			Status:   domain.StatusRuntimeError,
-			Stdout:   runRes.Stdout,
-			Stderr:   runRes.Stderr,
-			ExitCode: runRes.ExitCode,
-		}, nil
-	}
-
-	// Step 6: Classify result as SUCCESS
-	return domain.ExecutionResult{
-		Status:   domain.StatusSuccess,
-		Stdout:   runRes.Stdout,
-		Stderr:   runRes.Stderr,
-		ExitCode: 0,
-	}, nil
+	return runDomainRes, nil
 }

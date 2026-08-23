@@ -28,8 +28,8 @@ type ExecResult struct {
 
 // Runtime defines the abstraction for a secure execution environment (e.g., Docker)
 type Runtime interface {
-	// StartContainer creates and starts an isolated container with the workspace mounted
-	StartContainer(ctx context.Context, workspace string) (string, error)
+	// StartContainer creates and starts an isolated container with the workspace mounted and the profile limits applied
+	StartContainer(ctx context.Context, workspace string, profile Profile) (string, error)
 
 	// Exec runs a command synchronously inside the specified container
 	Exec(ctx context.Context, containerID string, opts ExecOptions) ExecResult

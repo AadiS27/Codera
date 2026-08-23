@@ -8,6 +8,7 @@ const (
 	StatusCompilationTimeout  ExecutionStatus = "COMPILATION_TIMEOUT"
 	StatusRuntimeError        ExecutionStatus = "RUNTIME_ERROR"
 	StatusTimeLimitExceeded   ExecutionStatus = "TIME_LIMIT_EXCEEDED"
+	StatusMemoryLimitExceeded ExecutionStatus = "MEMORY_LIMIT_EXCEEDED"
 	StatusOutputLimitExceeded ExecutionStatus = "OUTPUT_LIMIT_EXCEEDED"
 	StatusInternalError       ExecutionStatus = "INTERNAL_ERROR"
 

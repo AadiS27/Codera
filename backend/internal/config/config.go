@@ -58,6 +58,13 @@ type Config struct {
 	WorkerShutdownTimeout   time.Duration
 }
 
+func DefaultConfig() *Config {
+	os.Setenv("ENV", "test")
+	os.Setenv("DATABASE_URL", "postgres://codera:codera_password@localhost:5432/codera_db?sslmode=disable")
+	cfg, _ := Load()
+	return cfg
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		Env:      os.Getenv("ENV"),

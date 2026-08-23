@@ -252,8 +252,10 @@ func TestJavaExecutor(t *testing.T) {
 			public class Main {
 				public static void main(String[] args) {
 					try {
-						URL url = new URL("http://example.com");
+						URL url = new URL("http://1.2.3.4");
 						URLConnection conn = url.openConnection();
+						conn.setConnectTimeout(500);
+						conn.setReadTimeout(500);
 						conn.connect();
 						System.out.println("CONNECTED");
 					} catch (Exception e) {
@@ -282,7 +284,7 @@ func TestJavaExecutor(t *testing.T) {
 			public class Main {
 				public static void main(String[] args) {
 					try {
-						File file = new File("/tmp/hacked.txt");
+						File file = new File("/hacked.txt");
 						FileWriter writer = new FileWriter(file);
 						writer.write("hacked");
 						writer.close();
