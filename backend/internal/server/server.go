@@ -60,8 +60,9 @@ func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, prob
 	s.subHandler.RegisterRoutes(mux)
 	s.runHandler.RegisterRoutes(mux)
 
-	// Apply Middlewares: Recovery -> RequestID -> RequestLogger
+	// Apply Middlewares: CORS -> Recovery -> RequestID -> RequestLogger
 	handler := phttp.Chain(mux,
+		phttp.CORS(),
 		phttp.RecoverPanic(logger),
 		phttp.RequestID(),
 		phttp.RequestLogger(logger),
