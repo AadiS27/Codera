@@ -17,6 +17,12 @@ type Config struct {
 	RunTimeout      time.Duration
 	MaxStdoutBytes  int64
 	MaxStderrBytes  int64
+
+	SandboxRuntime     string
+	JavaSandboxImage   string
+	ExecutionMemory    string
+	ExecutionCPUs      string
+	ExecutionPidsLimit int64
 }
 
 func Load() (*Config, error) {
@@ -57,6 +63,27 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.MaxStderrBytes, err = parseInt("MAX_STDERR_BYTES", 65536)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.SandboxRuntime = os.Getenv("SANDBOX_RUNTIME")
+	if cfg.SandboxRuntime == "" {
+		cfg.SandboxRuntime = "docker"
+	}
+	cfg.JavaSandboxImage = os.Getenv("JAVA_SANDBOX_IMAGE")
+	if cfg.JavaSandboxImage == "" {
+		cfg.JavaSandboxImage = "code-executor-java:latest"
+	}
+	cfg.ExecutionMemory = os.Getenv("EXECUTION_MEMORY")
+	if cfg.ExecutionMemory == "" {
+		cfg.ExecutionMemory = "256m"
+	}
+	cfg.ExecutionCPUs = os.Getenv("EXECUTION_CPUS")
+	if cfg.ExecutionCPUs == "" {
+		cfg.ExecutionCPUs = "1.0"
+	}
+	cfg.ExecutionPidsLimit, err = parseInt("EXECUTION_PIDS_LIMIT", 64)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +134,15 @@ func (c *Config) validate() error {
 	}
 	if c.MaxStderrBytes <= 0 {
 		return errors.New("MAX_STDERR_BYTES must be positive")
+	}
+	if c.SandboxRuntime == "" {
+		return errors.New("SANDBOX_RUNTIME cannot be empty")
+	}
+	if c.JavaSandboxImage == "" {
+		return errors.New("JAVA_SANDBOX_IMAGE cannot be empty")
+	}
+	if c.ExecutionPidsLimit <= 0 {
+		return errors.New("EXECUTION_PIDS_LIMIT must be positive")
 	}
 	return nil
 }

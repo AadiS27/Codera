@@ -6,6 +6,7 @@ import (
 
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/domain"
+	"github.com/codera/code-executor/internal/sandbox"
 )
 
 type Executor interface {
@@ -17,11 +18,11 @@ type Service struct {
 	executors map[string]Executor
 }
 
-func NewService(cfg *config.Config) *Service {
+func NewService(cfg *config.Config, sb sandbox.Runtime) *Service {
 	return &Service{
 		config: cfg,
 		executors: map[string]Executor{
-			"java": NewJavaExecutor(cfg),
+			"java": NewJavaExecutor(cfg, sb),
 		},
 	}
 }

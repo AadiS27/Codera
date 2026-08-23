@@ -12,6 +12,7 @@ import (
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/execution"
 	"github.com/codera/code-executor/internal/platform/logger"
+	"github.com/codera/code-executor/internal/sandbox/docker"
 	"github.com/codera/code-executor/internal/server"
 )
 
@@ -28,8 +29,11 @@ func main() {
 	log := logger.New(cfg.Env, cfg.LogLevel)
 	slog.SetDefault(log)
 
+	// Initialize Sandbox
+	sb := docker.NewRuntime(cfg)
+
 	// Initialize services
-	execService := execution.NewService(cfg)
+	execService := execution.NewService(cfg, sb)
 
 	// Initialize server
 	srv := server.New(cfg, log, execService)

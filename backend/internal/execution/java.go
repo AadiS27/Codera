@@ -12,14 +12,16 @@ import (
 
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/domain"
+	"github.com/codera/code-executor/internal/sandbox"
 )
 
 type JavaExecutor struct {
-	config *config.Config
+	config  *config.Config
+	sandbox sandbox.Runtime
 }
 
-func NewJavaExecutor(cfg *config.Config) *JavaExecutor {
-	return &JavaExecutor{config: cfg}
+func NewJavaExecutor(cfg *config.Config, sb sandbox.Runtime) *JavaExecutor {
+	return &JavaExecutor{config: cfg, sandbox: sb}
 }
 
 func isPlatformError(err error) bool {
@@ -34,31 +36,39 @@ func isPlatformError(err error) bool {
 }
 
 func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest) (domain.ExecutionResult, error) {
-	// Step 1: Create a unique temporary directory
+	// Step 1: Create a unique temporary directory on host
 	workspace, err := os.MkdirTemp("", "code-executor-java-*")
 	if err != nil {
 		return domain.ExecutionResult{}, fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	defer os.RemoveAll(workspace) // Step 7: Cleanup always
+	defer os.RemoveAll(workspace) // Step 7: Cleanup workspace always
 
 	// Step 2: Write source code
 	sourcePath := filepath.Join(workspace, "Main.java")
-	if err := os.WriteFile(sourcePath, []byte(req.SourceCode), 0644); err != nil {
+	if err := os.WriteFile(sourcePath, []byte(req.SourceCode), 0777); err != nil {
 		return domain.ExecutionResult{}, fmt.Errorf("failed to write source file: %w", err)
 	}
+	// Give full permissions so Docker non-root user can read/write to this mounted dir
+	_ = os.Chmod(workspace, 0777)
+	_ = os.Chmod(sourcePath, 0666)
 
-	// Step 3: Compile
-	compileOpts := RunOptions{
-		Ctx:         ctx,
+	// Step 3: Start Sandbox Container
+	containerID, err := j.sandbox.StartContainer(ctx, workspace)
+	if err != nil {
+		return domain.ExecutionResult{}, fmt.Errorf("failed to start sandbox: %w", err)
+	}
+	defer j.sandbox.DestroyContainer(containerID)
+
+	// Step 4: Compile
+	compileOpts := sandbox.ExecOptions{
 		Command:     "javac",
 		Args:        []string{"-source", "1.8", "-target", "1.8", "Main.java"},
-		Dir:         workspace,
 		StdoutLimit: j.config.MaxStdoutBytes,
 		StderrLimit: j.config.MaxStderrBytes,
 		Timeout:     j.config.CompileTimeout,
 	}
 
-	compileRes := RunProcess(compileOpts)
+	compileRes := j.sandbox.Exec(ctx, containerID, compileOpts)
 	if isPlatformError(compileRes.Error) {
 		return domain.ExecutionResult{}, fmt.Errorf("failed to compile process (platform): %w", compileRes.Error)
 	}
@@ -96,18 +106,16 @@ func (j *JavaExecutor) Execute(ctx context.Context, req domain.ExecutionRequest)
 		stdinReader = strings.NewReader(req.Input)
 	}
 
-	runOpts := RunOptions{
-		Ctx:         ctx,
+	runOpts := sandbox.ExecOptions{
 		Command:     "java",
 		Args:        []string{"Main"},
-		Dir:         workspace,
 		Stdin:       stdinReader,
 		StdoutLimit: j.config.MaxStdoutBytes,
 		StderrLimit: j.config.MaxStderrBytes,
 		Timeout:     j.config.RunTimeout,
 	}
 
-	runRes := RunProcess(runOpts)
+	runRes := j.sandbox.Exec(ctx, containerID, runOpts)
 	if isPlatformError(runRes.Error) {
 		return domain.ExecutionResult{}, fmt.Errorf("failed to run process (platform): %w", runRes.Error)
 	}

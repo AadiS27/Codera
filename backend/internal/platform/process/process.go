@@ -1,4 +1,4 @@
-package execution
+package process
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"time"
 )
+
+var ErrOutputLimitExceeded = errors.New("output limit exceeded")
 
 type RunOptions struct {
 	Ctx         context.Context

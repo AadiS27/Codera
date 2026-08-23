@@ -9,20 +9,27 @@ import (
 
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/domain"
+	"github.com/codera/code-executor/internal/sandbox/docker"
 )
 
 func getTestConfig() *config.Config {
 	return &config.Config{
-		CompileTimeout: 5 * time.Second,
-		RunTimeout:     2 * time.Second,
-		MaxStdoutBytes: 1024,
-		MaxStderrBytes: 1024,
+		CompileTimeout:     5 * time.Second,
+		RunTimeout:         2 * time.Second,
+		MaxStdoutBytes:     1024,
+		MaxStderrBytes:     1024,
+		SandboxRuntime:     "docker",
+		JavaSandboxImage:   "code-executor-java:latest",
+		ExecutionMemory:    "256m",
+		ExecutionCPUs:      "1.0",
+		ExecutionPidsLimit: 64,
 	}
 }
 
 func TestJavaExecutor(t *testing.T) {
 	cfg := getTestConfig()
-	executor := NewJavaExecutor(cfg)
+	sb := docker.NewRuntime(cfg)
+	executor := NewJavaExecutor(cfg, sb)
 
 	t.Run("Test 1: Hello World", func(t *testing.T) {
 		req := domain.ExecutionRequest{
@@ -59,7 +66,8 @@ func TestJavaExecutor(t *testing.T) {
 		// Use a tight timeout for this test only
 		tightCfg := getTestConfig()
 		tightCfg.RunTimeout = 500 * time.Millisecond
-		tightExecutor := NewJavaExecutor(tightCfg)
+		tightSb := docker.NewRuntime(tightCfg)
+		tightExecutor := NewJavaExecutor(tightCfg, tightSb)
 
 		start := time.Now()
 		res, err := tightExecutor.Execute(context.Background(), req)
@@ -72,7 +80,7 @@ func TestJavaExecutor(t *testing.T) {
 			t.Errorf("expected TIME_LIMIT_EXCEEDED, got %v", res.Status)
 		}
 		// Ensure it actually stopped in roughly ~500ms and didn't hang
-		if duration > 2*time.Second {
+		if duration > 5*time.Second {
 			t.Errorf("execution took too long to timeout: %v", duration)
 		}
 	})
@@ -92,7 +100,8 @@ func TestJavaExecutor(t *testing.T) {
 		// Use a very small output limit
 		tightCfg := getTestConfig()
 		tightCfg.MaxStdoutBytes = 100
-		tightExecutor := NewJavaExecutor(tightCfg)
+		tightSb := docker.NewRuntime(tightCfg)
+		tightExecutor := NewJavaExecutor(tightCfg, tightSb)
 
 		start := time.Now()
 		res, err := tightExecutor.Execute(context.Background(), req)
@@ -108,7 +117,7 @@ func TestJavaExecutor(t *testing.T) {
 			t.Errorf("stdout exceeded max limit! length: %d", len(res.Stdout))
 		}
 		// Ensure it didn't hang until a time timeout
-		if duration > 2*time.Second {
+		if duration > 5*time.Second {
 			t.Errorf("output limit termination took too long: %v", duration)
 		}
 	})
@@ -127,7 +136,8 @@ func TestJavaExecutor(t *testing.T) {
 
 		tightCfg := getTestConfig()
 		tightCfg.MaxStderrBytes = 50
-		tightExecutor := NewJavaExecutor(tightCfg)
+		tightSb := docker.NewRuntime(tightCfg)
+		tightExecutor := NewJavaExecutor(tightCfg, tightSb)
 
 		res, err := tightExecutor.Execute(context.Background(), req)
 
@@ -232,6 +242,67 @@ func TestJavaExecutor(t *testing.T) {
 			if strings.TrimSpace(results[i].Stdout) != expected {
 				t.Errorf("expected %v, got %v", expected, results[i].Stdout)
 			}
+		}
+	})
+
+	t.Run("Test 9: Network blocked", func(t *testing.T) {
+		req := domain.ExecutionRequest{
+			Language: "java",
+			SourceCode: `import java.net.URL; import java.net.URLConnection;
+			public class Main {
+				public static void main(String[] args) {
+					try {
+						URL url = new URL("http://example.com");
+						URLConnection conn = url.openConnection();
+						conn.connect();
+						System.out.println("CONNECTED");
+					} catch (Exception e) {
+						System.out.println("FAILED");
+					}
+				}
+			}`,
+		}
+
+		res, err := executor.Execute(context.Background(), req)
+		if err != nil {
+			t.Fatalf("unexpected platform error: %v", err)
+		}
+		if res.Status != domain.StatusSuccess {
+			t.Errorf("expected SUCCESS, got %v (stderr: %v)", res.Status, res.Stderr)
+		}
+		if !strings.Contains(res.Stdout, "FAILED") {
+			t.Errorf("expected network connection to fail, but it succeeded")
+		}
+	})
+
+	t.Run("Test 10: Read-only filesystem", func(t *testing.T) {
+		req := domain.ExecutionRequest{
+			Language: "java",
+			SourceCode: `import java.io.File; import java.io.FileWriter;
+			public class Main {
+				public static void main(String[] args) {
+					try {
+						File file = new File("/tmp/hacked.txt");
+						FileWriter writer = new FileWriter(file);
+						writer.write("hacked");
+						writer.close();
+						System.out.println("WROTE");
+					} catch (Exception e) {
+						System.out.println("FAILED");
+					}
+				}
+			}`,
+		}
+
+		res, err := executor.Execute(context.Background(), req)
+		if err != nil {
+			t.Fatalf("unexpected platform error: %v", err)
+		}
+		if res.Status != domain.StatusSuccess {
+			t.Errorf("expected SUCCESS, got %v", res.Status)
+		}
+		if !strings.Contains(res.Stdout, "FAILED") {
+			t.Errorf("expected writing outside /workspace to fail due to read-only root fs")
 		}
 	})
 }
