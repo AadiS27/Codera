@@ -23,12 +23,19 @@ interface SubmitResult {
   aiFeedback?: string;
 }
 
+const STARTER_CODE: Record<string, string> = {
+  java: 'import java.util.*;\n\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    // Write your code here\n  }\n}',
+  cpp: '#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n  // Write your code here\n  return 0;\n}',
+  python: 'import sys\n\ndef main():\n  # Write your code here\n  pass\n\nif __name__ == "__main__":\n  main()',
+  go: 'package main\n\nimport (\n\t"fmt"\n)\n\nfunc main() {\n\t// Write your code here\n}',
+};
+
 export default function Workspace({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const [problem, setProblem] = useState<any>(null);
   const [testCases, setTestCases] = useState<any[]>([]);
   const [language, setLanguage] = useState('java');
-  const [code, setCode] = useState('class Solution {\n  public void solve() {\n    // Write your code here\n  }\n}');
+  const [code, setCode] = useState(STARTER_CODE['java']);
   const [loading, setLoading] = useState(true);
   const [customInputs, setCustomInputs] = useState<string[]>(['']);
   const [activeTestCase, setActiveTestCase] = useState(0);
@@ -191,6 +198,14 @@ export default function Workspace({ params }: { params: Promise<{ id: string }> 
     else if (activeTestCase > i) setActiveTestCase(activeTestCase - 1);
   };
 
+  const handleLanguageChange = (newLang: string) => {
+    setLanguage(newLang);
+    // Overwrite with new template ONLY if user hasn't modified the existing template
+    if (Object.values(STARTER_CODE).includes(code)) {
+      setCode(STARTER_CODE[newLang]);
+    }
+  };
+
   if (loading) {
     return <div className="loading-screen cyber-glitch-text" data-text="INITIALIZING...">INITIALIZING...<span className="blinking-cursor"></span></div>;
   }
@@ -223,12 +238,14 @@ export default function Workspace({ params }: { params: Promise<{ id: string }> 
       <div className="right-panel">
         <div className="editor-container holo-panel cyber-chamfer">
           <div className="panel-header editor-header">
-            <select value={language} onChange={(e) => setLanguage(e.target.value)} className="lang-select">
-              <option value="java">JAVA_</option>
-              <option value="python">PYTHON_</option>
-              <option value="go">GO_</option>
-              <option value="cpp">CPP_</option>
-            </select>
+            <div className="language-selector">
+              <select className="cyber-select cyber-chamfer-sm" value={language} onChange={e => handleLanguageChange(e.target.value)}>
+                <option value="java">JAVA_</option>
+                <option value="cpp">CPP_</option>
+                <option value="python">PYTHON_</option>
+                <option value="go">GO_</option>
+              </select>
+            </div>
           </div>
           <div className="editor-wrapper">
             <Editor
