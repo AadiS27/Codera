@@ -8,7 +8,7 @@ import (
 )
 
 type TestCaseRepository interface {
-	Create(ctx context.Context, tc domain.TestCase) error
+	Create(ctx context.Context, tc *domain.TestCase) error
 	GetByProblemID(ctx context.Context, problemID string, includeHidden bool) ([]domain.TestCase, error)
 }
 
@@ -20,18 +20,18 @@ func NewPostgresTestCaseRepository(db *pgxpool.Pool) *PostgresTestCaseRepository
 	return &PostgresTestCaseRepository{db: db}
 }
 
-func (r *PostgresTestCaseRepository) Create(ctx context.Context, tc domain.TestCase) error {
+func (r *PostgresTestCaseRepository) Create(ctx context.Context, tc *domain.TestCase) error {
 	query := `
 		INSERT INTO test_cases (
-			id, problem_id, input, expected_output, visibility, sort_order, created_at
+			problem_id, input, expected_output, visibility, sort_order, created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7
-		)
+			$1, $2, $3, $4, $5, $6
+		) RETURNING id
 	`
-	_, err := r.db.Exec(ctx, query,
-		tc.ID, tc.ProblemID, tc.Input, tc.ExpectedOutput, string(tc.Visibility),
+	err := r.db.QueryRow(ctx, query,
+		tc.ProblemID, tc.Input, tc.ExpectedOutput, string(tc.Visibility),
 		tc.SortOrder, tc.CreatedAt,
-	)
+	).Scan(&tc.ID)
 	return err
 }
 

@@ -31,7 +31,7 @@ func (h *ProblemHandler) createProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.probRepo.Create(r.Context(), p); err != nil {
+	if err := h.probRepo.Create(r.Context(), &p); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -53,18 +53,18 @@ func (h *ProblemHandler) createFullProblem(w http.ResponseWriter, r *http.Reques
 	}
 
 	// 1. Create Problem
-	if err := h.probRepo.Create(r.Context(), req.Problem); err != nil {
+	if err := h.probRepo.Create(r.Context(), &req.Problem); err != nil {
 		http.Error(w, "failed to create problem: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// 2. Create Test Cases
-	for i, tc := range req.TestCases {
-		tc.ProblemID = req.Problem.ID
-		if tc.SortOrder == 0 {
-			tc.SortOrder = i + 1 // Ensure some sort order
+	for i := range req.TestCases {
+		req.TestCases[i].ProblemID = req.Problem.ID
+		if req.TestCases[i].SortOrder == 0 {
+			req.TestCases[i].SortOrder = i + 1 // Ensure some sort order
 		}
-		if err := h.testCaseRepo.Create(r.Context(), tc); err != nil {
+		if err := h.testCaseRepo.Create(r.Context(), &req.TestCases[i]); err != nil {
 			http.Error(w, "failed to create test case: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -87,7 +87,7 @@ func (h *ProblemHandler) createTestCase(w http.ResponseWriter, r *http.Request) 
 	}
 	tc.ProblemID = id
 
-	if err := h.testCaseRepo.Create(r.Context(), tc); err != nil {
+	if err := h.testCaseRepo.Create(r.Context(), &tc); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

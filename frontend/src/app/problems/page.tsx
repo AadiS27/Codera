@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 
 // Mocked list of problems since we don't have a GET /problems endpoint yet

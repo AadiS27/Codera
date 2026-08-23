@@ -12,7 +12,7 @@ import (
 var ErrProblemNotFound = errors.New("problem not found")
 
 type ProblemRepository interface {
-	Create(ctx context.Context, p domain.Problem) error
+	Create(ctx context.Context, p *domain.Problem) error
 	GetByID(ctx context.Context, id string) (domain.Problem, error)
 	// Additional methods like Update, List can be added later
 }
@@ -25,21 +25,21 @@ func NewPostgresProblemRepository(db *pgxpool.Pool) *PostgresProblemRepository {
 	return &PostgresProblemRepository{db: db}
 }
 
-func (r *PostgresProblemRepository) Create(ctx context.Context, p domain.Problem) error {
+func (r *PostgresProblemRepository) Create(ctx context.Context, p *domain.Problem) error {
 	query := `
 		INSERT INTO problems (
-			id, title, slug, description, input_description, output_description,
+			title, slug, description, input_description, output_description,
 			constraints, time_limit_ms, memory_limit_mb, comparison_mode,
 			float_epsilon, status, created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
-		)
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+		) RETURNING id
 	`
-	_, err := r.db.Exec(ctx, query,
-		p.ID, p.Title, p.Slug, p.Description, p.InputDescription, p.OutputDescription,
+	err := r.db.QueryRow(ctx, query,
+		p.Title, p.Slug, p.Description, p.InputDescription, p.OutputDescription,
 		p.Constraints, p.TimeLimitMs, p.MemoryLimitMB, string(p.ComparisonMode),
 		p.FloatEpsilon, string(p.Status), p.CreatedAt,
-	)
+	).Scan(&p.ID)
 	return err
 }
 
