@@ -27,7 +27,7 @@ var (
 		Name:             "SMALL",
 		MemoryLimitBytes: 128 * 1024 * 1024, // 128 MB
 		CPULimit:         0.5,
-		PidsLimit:        32,
+		PidsLimit:        128,
 		TmpfsSizeBytes:   32 * 1024 * 1024,  // 32 MB
 		Timeout:          2 * time.Second,
 		MaxOutputBytes:   1024 * 1024,       // 1 MB
@@ -37,9 +37,9 @@ var (
 		Name:             "MEDIUM",
 		MemoryLimitBytes: 256 * 1024 * 1024, // 256 MB
 		CPULimit:         1.0,
-		PidsLimit:        64,
+		PidsLimit:        256,
 		TmpfsSizeBytes:   64 * 1024 * 1024,
-		Timeout:          5 * time.Second,
+		Timeout:          15 * time.Second,
 		MaxOutputBytes:   5 * 1024 * 1024,
 	}
 
@@ -47,7 +47,7 @@ var (
 		Name:             "LARGE",
 		MemoryLimitBytes: 512 * 1024 * 1024, // 512 MB
 		CPULimit:         2.0,
-		PidsLimit:        128,
+		PidsLimit:        512,
 		TmpfsSizeBytes:   128 * 1024 * 1024,
 		Timeout:          10 * time.Second,
 		MaxOutputBytes:   10 * 1024 * 1024,

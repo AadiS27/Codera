@@ -20,6 +20,12 @@ import (
 	"github.com/codera/code-executor/internal/server"
 	"github.com/codera/code-executor/internal/worker"
 	"github.com/codera/code-executor/internal/recovery"
+	"github.com/codera/code-executor/internal/language"
+	"github.com/codera/code-executor/internal/language/java"
+	"github.com/codera/code-executor/internal/language/python"
+	"github.com/codera/code-executor/internal/language/go"
+	"github.com/codera/code-executor/internal/language/cpp"
+	"github.com/codera/code-executor/internal/sandbox"
 )
 
 func main() {
@@ -38,8 +44,23 @@ func main() {
 	// Initialize Sandbox
 	sb := docker.NewRuntime(cfg)
 
+	// Initialize Language Registry
+	langRegistry := language.NewMapRegistry()
+	
+	// Load language profiles
+	javaProfile, _ := sandbox.GetProfileForLanguage("java")
+	pythonProfile, _ := sandbox.GetProfileForLanguage("python")
+	goProfile, _ := sandbox.GetProfileForLanguage("go")
+	cppProfile, _ := sandbox.GetProfileForLanguage("cpp")
+	
+	// Register Language Executors
+	langRegistry.Register(java.NewExecutor(javaProfile))
+	langRegistry.Register(python.NewExecutor(pythonProfile))
+	langRegistry.Register(golang.NewExecutor(goProfile))
+	langRegistry.Register(cpp.NewExecutor(cppProfile))
+
 	// Initialize Execution Service
-	execService := execution.NewService(cfg, sb)
+	execService := execution.NewService(cfg, langRegistry, sb)
 
 	// Connect to Database
 	database, err := db.Connect(context.Background(), cfg, log)
@@ -73,7 +94,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	jobService := jobs.NewService(jobStore, redisQueue)
+	jobService := jobs.NewService(jobStore, redisQueue, langRegistry)
 
 	role := cfg.Role
 	log.Info("Starting application", "role", role, "instance_id", cfg.InstanceID)

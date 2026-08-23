@@ -7,19 +7,22 @@ import (
 	"time"
 
 	"github.com/codera/code-executor/internal/domain"
+	"github.com/codera/code-executor/internal/language"
 	"github.com/codera/code-executor/internal/queue"
 	"github.com/oklog/ulid/v2"
 )
 
 type Service struct {
-	store JobStore
-	queue queue.JobQueue
+	store    JobStore
+	queue    queue.JobQueue
+	registry language.Registry
 }
 
-func NewService(store JobStore, q queue.JobQueue) *Service {
+func NewService(store JobStore, q queue.JobQueue, registry language.Registry) *Service {
 	return &Service{
-		store: store,
-		queue: q,
+		store:    store,
+		queue:    q,
+		registry: registry,
 	}
 }
 
@@ -28,6 +31,11 @@ func (s *Service) CreateExecution(ctx context.Context, req domain.ExecutionReque
 	// Simple validation
 	if req.Language == "" || req.SourceCode == "" {
 		return nil, fmt.Errorf("language and source_code are required")
+	}
+
+	// Validate language against registry
+	if _, err := s.registry.Get(req.Language); err != nil {
+		return nil, fmt.Errorf("unsupported language: %v", req.Language)
 	}
 
 	// Generate ULID

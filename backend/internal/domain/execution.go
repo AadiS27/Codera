@@ -1,5 +1,13 @@
 package domain
 
+type Language string
+
+const (
+	LanguageJava   Language = "java"
+	LanguagePython Language = "python"
+	LanguageGo     Language = "go"
+	LanguageCpp    Language = "cpp"
+)
 type ExecutionStatus string
 
 const (
@@ -19,9 +27,9 @@ const (
 )
 
 type ExecutionRequest struct {
-	Language   string `json:"language"`
-	SourceCode string `json:"source_code"`
-	Input      string `json:"input"`
+	Language   Language `json:"language"`
+	SourceCode string   `json:"source_code"`
+	Input      string   `json:"input"`
 }
 
 type ExecutionResult struct {

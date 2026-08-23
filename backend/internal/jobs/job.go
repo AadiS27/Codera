@@ -20,7 +20,7 @@ const (
 // ExecutionJob represents an async execution task in the system.
 type ExecutionJob struct {
 	ID         string
-	Language   string
+	Language   domain.Language
 	SourceCode string
 	Input      string
 	

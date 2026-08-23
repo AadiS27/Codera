@@ -46,7 +46,7 @@ func (s *PostgresJobStore) Create(ctx context.Context, job *ExecutionJob) error 
 
 	_, err := s.pool.Exec(ctx, query,
 		job.ID,
-		job.Language,
+		string(job.Language),
 		job.SourceCode,
 		job.Input,
 		string(job.Status),
