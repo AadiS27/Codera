@@ -10,6 +10,7 @@ import (
 	"github.com/codera/code-executor/internal/domain"
 	"github.com/codera/code-executor/internal/execution"
 	"github.com/codera/code-executor/internal/jobs"
+	"github.com/codera/code-executor/internal/judge"
 	"github.com/codera/code-executor/internal/queue"
 )
 

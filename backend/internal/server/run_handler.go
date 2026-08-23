@@ -10,14 +10,14 @@ import (
 )
 
 type RunHandler struct {
-	jobStore *jobs.PostgresJobStore
+	jobService *jobs.Service
 	registry language.Registry
 }
 
-func NewRunHandler(jobStore *jobs.PostgresJobStore, registry language.Registry) *RunHandler {
+func NewRunHandler(jobService *jobs.Service, registry language.Registry) *RunHandler {
 	return &RunHandler{
-		jobStore: jobStore,
-		registry: registry,
+		jobService: jobService,
+		registry:   registry,
 	}
 }
 
@@ -45,20 +45,24 @@ func (h *RunHandler) createRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID, err := h.jobStore.Create(r.Context(), req.Language, req.SourceCode, req.Input)
+	job, err := h.jobService.CreateExecution(r.Context(), domain.ExecutionRequest{
+		Language:   req.Language,
+		SourceCode: req.SourceCode,
+		Input:      req.Input,
+	})
 	if err != nil {
 		http.Error(w, "failed to create run", http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"id": jobID, "status": "QUEUED"})
+	json.NewEncoder(w).Encode(map[string]string{"id": job.ID, "status": string(job.Status)})
 }
 
 func (h *RunHandler) getRun(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	
-	job, err := h.jobStore.Get(r.Context(), id)
+	job, err := h.jobService.GetExecution(r.Context(), id)
 	if err != nil {
 		if err == jobs.ErrJobNotFound {
 			http.Error(w, "run not found", http.StatusNotFound)

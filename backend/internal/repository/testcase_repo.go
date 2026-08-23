@@ -2,9 +2,9 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/codera/code-executor/internal/domain"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TestCaseRepository interface {
@@ -13,10 +13,10 @@ type TestCaseRepository interface {
 }
 
 type PostgresTestCaseRepository struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
-func NewPostgresTestCaseRepository(db *sql.DB) *PostgresTestCaseRepository {
+func NewPostgresTestCaseRepository(db *pgxpool.Pool) *PostgresTestCaseRepository {
 	return &PostgresTestCaseRepository{db: db}
 }
 
@@ -28,7 +28,7 @@ func (r *PostgresTestCaseRepository) Create(ctx context.Context, tc domain.TestC
 			$1, $2, $3, $4, $5, $6, $7
 		)
 	`
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.db.Exec(ctx, query,
 		tc.ID, tc.ProblemID, tc.Input, tc.ExpectedOutput, string(tc.Visibility),
 		tc.SortOrder, tc.CreatedAt,
 	)
@@ -49,7 +49,7 @@ func (r *PostgresTestCaseRepository) GetByProblemID(ctx context.Context, problem
 	
 	query += ` ORDER BY sort_order ASC`
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

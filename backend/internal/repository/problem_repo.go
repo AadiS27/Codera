@@ -2,10 +2,11 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/codera/code-executor/internal/domain"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrProblemNotFound = errors.New("problem not found")
@@ -17,10 +18,10 @@ type ProblemRepository interface {
 }
 
 type PostgresProblemRepository struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
-func NewPostgresProblemRepository(db *sql.DB) *PostgresProblemRepository {
+func NewPostgresProblemRepository(db *pgxpool.Pool) *PostgresProblemRepository {
 	return &PostgresProblemRepository{db: db}
 }
 
@@ -34,7 +35,7 @@ func (r *PostgresProblemRepository) Create(ctx context.Context, p domain.Problem
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 		)
 	`
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.db.Exec(ctx, query,
 		p.ID, p.Title, p.Slug, p.Description, p.InputDescription, p.OutputDescription,
 		p.Constraints, p.TimeLimitMs, p.MemoryLimitMB, string(p.ComparisonMode),
 		p.FloatEpsilon, string(p.Status), p.CreatedAt,
@@ -53,13 +54,13 @@ func (r *PostgresProblemRepository) GetByID(ctx context.Context, id string) (dom
 	var compMode string
 	var status string
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.db.QueryRow(ctx, query, id).Scan(
 		&p.ID, &p.Title, &p.Slug, &p.Description, &p.InputDescription, &p.OutputDescription,
 		&p.Constraints, &p.TimeLimitMs, &p.MemoryLimitMB, &compMode,
 		&p.FloatEpsilon, &status, &p.CreatedAt,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Problem{}, ErrProblemNotFound
 		}
 		return domain.Problem{}, err

@@ -58,7 +58,7 @@ func (s *Service) CreateExecution(ctx context.Context, req domain.ExecutionReque
 	}
 
 	// 2. Enqueue the job ID
-	if err := s.queue.Enqueue(ctx, job.ID); err != nil {
+	if err := s.queue.Enqueue(ctx, job.ID, "run"); err != nil {
 		return nil, err // Could be ErrQueueFull or ErrQueueClosed
 	}
 

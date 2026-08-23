@@ -118,7 +118,7 @@ func (s *Service) DispatchDelayedJobs(ctx context.Context) {
 
 	for _, id := range ids {
 		// Enqueue to Redis
-		if err := s.queue.Enqueue(ctx, id); err != nil {
+		if err := s.queue.Enqueue(ctx, id, "run"); err != nil {
 			s.logger.Error("Failed to enqueue delayed job", "job_id", id, "error", err)
 			continue
 		}

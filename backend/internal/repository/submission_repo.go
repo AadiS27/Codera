@@ -2,10 +2,11 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/codera/code-executor/internal/domain"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrSubmissionNotFound = errors.New("submission not found")
@@ -17,10 +18,10 @@ type SubmissionRepository interface {
 }
 
 type PostgresSubmissionRepository struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
-func NewPostgresSubmissionRepository(db *sql.DB) *PostgresSubmissionRepository {
+func NewPostgresSubmissionRepository(db *pgxpool.Pool) *PostgresSubmissionRepository {
 	return &PostgresSubmissionRepository{db: db}
 }
 
@@ -34,7 +35,7 @@ func (r *PostgresSubmissionRepository) Create(ctx context.Context, s *domain.Sub
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 		) RETURNING id
 	`
-	err := r.db.QueryRowContext(ctx, query,
+	err := r.db.QueryRow(ctx, query,
 		s.UserID, s.ProblemID, string(s.Language), s.SourceCode, string(s.Status), string(s.Verdict),
 		s.ExecutionTimeMs, s.MemoryUsedBytes, s.PassedTestCases, s.TotalTestCases,
 		s.CreatedAt, s.CompletedAt,
@@ -52,13 +53,13 @@ func (r *PostgresSubmissionRepository) GetByID(ctx context.Context, id string) (
 	var s domain.Submission
 	var lang, status, verdict string
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.db.QueryRow(ctx, query, id).Scan(
 		&s.ID, &s.UserID, &s.ProblemID, &lang, &s.SourceCode, &status, &verdict,
 		&s.ExecutionTimeMs, &s.MemoryUsedBytes, &s.PassedTestCases, &s.TotalTestCases,
 		&s.CreatedAt, &s.CompletedAt,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Submission{}, ErrSubmissionNotFound
 		}
 		return domain.Submission{}, err
@@ -79,7 +80,7 @@ func (r *PostgresSubmissionRepository) Update(ctx context.Context, s domain.Subm
 			completed_at = $7
 		WHERE id = $8
 	`
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.db.Exec(ctx, query,
 		string(s.Status), string(s.Verdict), s.ExecutionTimeMs,
 		s.MemoryUsedBytes, s.PassedTestCases, s.TotalTestCases,
 		s.CompletedAt, s.ID,

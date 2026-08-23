@@ -12,6 +12,7 @@ import (
 
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/db"
+	"github.com/codera/code-executor/internal/domain"
 	"github.com/codera/code-executor/internal/execution"
 	"github.com/codera/code-executor/internal/jobs"
 	"github.com/codera/code-executor/internal/platform/logger"
@@ -134,7 +135,7 @@ func main() {
 		// Initialize server handlers
 		probHandler := server.NewProblemHandler(probRepo, testCaseRepo)
 		subHandler := server.NewSubmissionHandler(subRepo, probRepo, redisQueue, langRegistry)
-		runHandler := server.NewRunHandler(jobStore, langRegistry)
+		runHandler := server.NewRunHandler(jobService, langRegistry)
 
 		// Initialize server
 		srv = server.New(cfg, log, jobService, probHandler, subHandler, runHandler, database, redisDB)

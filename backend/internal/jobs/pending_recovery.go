@@ -125,7 +125,7 @@ func (pr *PendingRecovery) runRecovery(ctx context.Context) {
 				// Actually, if we XACK it and call Enqueue, it cleanly resets it for workers to consume.
 				pr.logger.Info("Pending message belongs to QUEUED job, re-enqueuing", "job_id", jobID)
 				pr.redis.XAck(ctx, pr.stream, pr.group, msg.ID)
-				_ = pr.queue.Enqueue(ctx, jobID)
+				_ = pr.queue.Enqueue(ctx, jobID, "run")
 			}
 		}
 
