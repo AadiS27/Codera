@@ -103,12 +103,12 @@ export default function Workspace({ params }: { params: Promise<{ id: string }> 
           const statusRes = await fetch(`http://localhost:8080/submissions/${data.id}`);
           const statusData = await statusRes.json();
           
-          if (statusData.Verdict !== 'PENDING' && statusData.Status !== 'QUEUED' && statusData.Status !== 'RUNNING') {
+          if (statusData.verdict !== 'PENDING' && statusData.status !== 'QUEUED' && statusData.status !== 'RUNNING') {
             clearInterval(poll);
             setIsExecuting(false);
             
-            let color = statusData.Verdict === 'ACCEPTED' ? 'var(--accent-cyan)' : '#FF0055';
-            setConsoleOutput(`\nJUDGEMENT: ${statusData.Verdict}\nPassed: ${statusData.PassedTestCases} / ${statusData.TotalTestCases}\nExecution Time: ${statusData.ExecutionTimeMs}ms`);
+            let color = statusData.verdict === 'ACCEPTED' ? 'var(--accent-cyan)' : '#FF0055';
+            setConsoleOutput(`\nJUDGEMENT: ${statusData.verdict}\nPassed: ${statusData.passed_test_cases} / ${statusData.total_test_cases}\nExecution Time: ${statusData.execution_time_ms}ms`);
           } else if (attempts > 30) {
             clearInterval(poll);
             setIsExecuting(false);
@@ -130,23 +130,23 @@ export default function Workspace({ params }: { params: Promise<{ id: string }> 
     <div className="workspace-container">
       <div className="left-panel glass-panel">
         <div className="panel-header">
-          <h2>{problem?.Title || "Unknown Problem"}</h2>
+          <h2>{problem?.title || "Unknown Problem"}</h2>
           <div className="meta-tags">
-            <span className="tag">Time: {problem?.TimeLimitMs}ms</span>
-            <span className="tag">Mem: {problem?.MemoryLimitMB}MB</span>
+            <span className="tag">Time: {problem?.time_limit_ms}ms</span>
+            <span className="tag">Mem: {problem?.memory_limit_mb}MB</span>
           </div>
         </div>
         <div className="panel-body problem-content">
-          <div dangerouslySetInnerHTML={{ __html: problem?.Description?.replace(/\n/g, '<br/>') || '' }} />
+          <div dangerouslySetInnerHTML={{ __html: problem?.description?.replace(/\n/g, '<br/>') || '' }} />
           
           <h3 className="section-title">Input Format</h3>
-          <div className="technical-text">{problem?.InputDescription}</div>
+          <div className="technical-text">{problem?.input_description}</div>
           
           <h3 className="section-title">Output Format</h3>
-          <div className="technical-text">{problem?.OutputDescription}</div>
+          <div className="technical-text">{problem?.output_description}</div>
           
           <h3 className="section-title">Constraints</h3>
-          <div className="technical-text constraints">{problem?.Constraints}</div>
+          <div className="technical-text constraints">{problem?.constraints}</div>
         </div>
       </div>
 

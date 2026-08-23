@@ -48,7 +48,7 @@ export default function AdminPage() {
       }
       
       const data = await res.json();
-      setSuccess(`Problem created with ID: ${data.problem.ID}`);
+      setSuccess(`Problem created with ID: ${data.problem.id}`);
       // Reset form
       setProblem({ ...problem, title: '', slug: '', description: '' });
       setTestCases([{ input: '', expected_output: '', visibility: 'PUBLIC' }]);

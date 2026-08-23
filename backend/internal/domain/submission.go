@@ -26,21 +26,21 @@ const (
 )
 
 type Submission struct {
-	ID             string
-	UserID         string
-	ProblemID      string
-	Language       Language
-	SourceCode     string
+	ID             string           `json:"id"`
+	UserID         string           `json:"user_id"`
+	ProblemID      string           `json:"problem_id"`
+	Language       Language         `json:"language"`
+	SourceCode     string           `json:"source_code"`
 	
-	Status         SubmissionStatus
-	Verdict        Verdict
+	Status         SubmissionStatus `json:"status"`
+	Verdict        Verdict          `json:"verdict"`
 	
-	ExecutionTimeMs int
-	MemoryUsedBytes int64
+	ExecutionTimeMs int             `json:"execution_time_ms"`
+	MemoryUsedBytes int64           `json:"memory_used_bytes"`
 	
-	PassedTestCases int
-	TotalTestCases  int
+	PassedTestCases int             `json:"passed_test_cases"`
+	TotalTestCases  int             `json:"total_test_cases"`
 	
-	CreatedAt      time.Time
-	CompletedAt    *time.Time
+	CreatedAt      time.Time        `json:"created_at"`
+	CompletedAt    *time.Time       `json:"completed_at,omitempty"`
 }
