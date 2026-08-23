@@ -16,6 +16,7 @@ import (
 	"github.com/codera/code-executor/internal/execution"
 	"github.com/codera/code-executor/internal/jobs"
 	"github.com/codera/code-executor/internal/platform/logger"
+	"github.com/joho/godotenv"
 	"github.com/codera/code-executor/internal/queue"
 	"github.com/codera/code-executor/internal/sandbox/docker"
 	"github.com/codera/code-executor/internal/server"
@@ -32,6 +33,9 @@ import (
 )
 
 func main() {
+	// Load .env file if it exists
+	_ = godotenv.Load()
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
