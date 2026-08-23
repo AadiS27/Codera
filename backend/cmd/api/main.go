@@ -11,9 +11,12 @@ import (
 
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/execution"
+	"github.com/codera/code-executor/internal/jobs"
 	"github.com/codera/code-executor/internal/platform/logger"
+	"github.com/codera/code-executor/internal/queue"
 	"github.com/codera/code-executor/internal/sandbox/docker"
 	"github.com/codera/code-executor/internal/server"
+	"github.com/codera/code-executor/internal/worker"
 )
 
 func main() {
@@ -32,11 +35,20 @@ func main() {
 	// Initialize Sandbox
 	sb := docker.NewRuntime(cfg)
 
-	// Initialize services
+	// Initialize Execution Service
 	execService := execution.NewService(cfg, sb)
 
+	// Initialize Jobs layer
+	jobStore := jobs.NewMemoryJobStore()
+	jobQueue := queue.NewMemoryQueue(cfg.QueueCapacity)
+	jobService := jobs.NewService(jobStore, jobQueue)
+
+	// Initialize Worker Pool
+	workerPool := worker.NewPool(log, jobQueue, jobStore, execService, cfg.ExecutionWorkers)
+	workerPool.Start(context.Background())
+
 	// Initialize server
-	srv := server.New(cfg, log, execService)
+	srv := server.New(cfg, log, jobService)
 
 	// Channel to listen for errors coming from the listener.
 	serverErrors := make(chan error, 1)
@@ -74,5 +86,9 @@ func main() {
 			os.Exit(1)
 		}
 		log.Info("Graceful shutdown completed")
+
+		// Now wait for workers to finish draining jobs
+		// The shutdown timeout context we created above limits this as well
+		workerPool.Stop(ctx)
 	}
 }

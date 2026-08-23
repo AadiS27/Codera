@@ -27,6 +27,14 @@ func NewService(cfg *config.Config, sb sandbox.Runtime) *Service {
 	}
 }
 
+func NewServiceForTesting(executor Executor) *Service {
+	return &Service{
+		executors: map[string]Executor{
+			"java": executor,
+		},
+	}
+}
+
 func (s *Service) Execute(ctx context.Context, req domain.ExecutionRequest) (domain.ExecutionResult, error) {
 	lang := strings.ToLower(req.Language)
 	if lang != "java" {

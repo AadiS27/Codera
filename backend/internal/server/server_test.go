@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/codera/code-executor/internal/config"
-	"github.com/codera/code-executor/internal/execution"
-	"github.com/codera/code-executor/internal/sandbox/docker"
+	"github.com/codera/code-executor/internal/jobs"
+	"github.com/codera/code-executor/internal/queue"
 )
 
 func TestEndpoints(t *testing.T) {
@@ -22,9 +22,13 @@ func TestEndpoints(t *testing.T) {
 		ShutdownTimeout: 1 * time.Second,
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	sb := docker.NewRuntime(cfg)
-	execService := execution.NewService(cfg, sb)
-	srv := New(cfg, logger, execService)
+	// execution service and sandbox not needed for basic routing tests
+	
+	jobStore := jobs.NewMemoryJobStore()
+	jobQueue := queue.NewMemoryQueue(10)
+	jobService := jobs.NewService(jobStore, jobQueue)
+
+	srv := New(cfg, logger, jobService)
 
 	tests := []struct {
 		name           string

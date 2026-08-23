@@ -23,6 +23,9 @@ type Config struct {
 	ExecutionMemory    string
 	ExecutionCPUs      string
 	ExecutionPidsLimit int64
+
+	ExecutionWorkers int64
+	QueueCapacity    int64
 }
 
 func Load() (*Config, error) {
@@ -88,6 +91,16 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	cfg.ExecutionWorkers, err = parseInt("EXECUTION_WORKERS", 4)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.QueueCapacity, err = parseInt("QUEUE_CAPACITY", 100)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -143,6 +156,12 @@ func (c *Config) validate() error {
 	}
 	if c.ExecutionPidsLimit <= 0 {
 		return errors.New("EXECUTION_PIDS_LIMIT must be positive")
+	}
+	if c.ExecutionWorkers <= 0 {
+		return errors.New("EXECUTION_WORKERS must be positive")
+	}
+	if c.QueueCapacity <= 0 {
+		return errors.New("QUEUE_CAPACITY must be positive")
 	}
 	return nil
 }
