@@ -63,7 +63,7 @@ func (s *MemoryJobStore) MarkRunning(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *MemoryJobStore) Complete(ctx context.Context, id string, result domain.ExecutionResult) error {
+func (s *MemoryJobStore) Complete(ctx context.Context, id string, workerID string, results []domain.ExecutionResult) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -79,7 +79,7 @@ func (s *MemoryJobStore) Complete(ctx context.Context, id string, result domain.
 	job.Status = StatusCompleted
 	now := time.Now().UTC()
 	job.CompletedAt = &now
-	job.Result = &result
+	job.Results = append([]domain.ExecutionResult(nil), results...)
 	
 	return nil
 }

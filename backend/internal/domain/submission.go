@@ -38,9 +38,12 @@ type Submission struct {
 	ExecutionTimeMs int             `json:"execution_time_ms"`
 	MemoryUsedBytes int64           `json:"memory_used_bytes"`
 	
-	PassedTestCases int             `json:"passed_test_cases"`
-	TotalTestCases  int             `json:"total_test_cases"`
-	
-	CreatedAt      time.Time        `json:"created_at"`
-	CompletedAt    *time.Time       `json:"completed_at,omitempty"`
+	PassedTestCases int               `json:"passed_test_cases"`
+	TotalTestCases  int               `json:"total_test_cases"`
+	AITimeComplexity  string          `json:"ai_time_complexity,omitempty"`
+	AISpaceComplexity string          `json:"ai_space_complexity,omitempty"`
+	AIFeedback        string          `json:"ai_feedback,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	StartedAt       *time.Time        `json:"started_at,omitempty"`
+	CompletedAt     *time.Time        `json:"completed_at,omitempty"`
 }

@@ -27,7 +27,7 @@ func NewService(store JobStore, q queue.JobQueue, registry language.Registry) *S
 }
 
 // CreateExecution validates the request, generates an ID, stores the job, and enqueues it.
-func (s *Service) CreateExecution(ctx context.Context, req domain.ExecutionRequest) (*ExecutionJob, error) {
+func (s *Service) CreateExecution(ctx context.Context, req domain.JobRequest) (*ExecutionJob, error) {
 	// Simple validation
 	if req.Language == "" || req.SourceCode == "" {
 		return nil, fmt.Errorf("language and source_code are required")
@@ -47,7 +47,7 @@ func (s *Service) CreateExecution(ctx context.Context, req domain.ExecutionReque
 		ID:         jobID,
 		Language:   req.Language,
 		SourceCode: req.SourceCode,
-		Input:      req.Input,
+		Inputs:     req.Inputs,
 		Status:     StatusQueued,
 		CreatedAt:  time.Now().UTC(),
 	}

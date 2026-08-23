@@ -61,6 +61,13 @@ func (rr *responseRecorder) WriteHeader(status int) {
 func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip wrapping for WebSocket upgrades — the responseRecorder
+			// hides the http.Hijacker interface the upgrader needs.
+			if r.Header.Get("Upgrade") == "websocket" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			start := time.Now()
 
 			rr := &responseRecorder{

@@ -111,6 +111,11 @@ func (q *RedisQueue) Ack(ctx context.Context, messageID string) error {
 	return q.client.XAck(ctx, q.stream, q.group, messageID).Err()
 }
 
+func (q *RedisQueue) PublishJobUpdate(ctx context.Context, jobID string, payload []byte) error {
+	channel := "job-updates:" + jobID
+	return q.client.Publish(ctx, channel, payload).Err()
+}
+
 func (q *RedisQueue) Close() {
 	q.closed.Store(true)
 }

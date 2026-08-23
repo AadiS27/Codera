@@ -56,6 +56,8 @@ type Config struct {
 	RetryBaseDelay          time.Duration
 	RetryMaxDelay           time.Duration
 	WorkerShutdownTimeout   time.Duration
+
+	GeminiAPIKey string
 }
 
 func DefaultConfig() *Config {
@@ -211,12 +213,18 @@ func Load() (*Config, error) {
 
 	cfg.WorkerHeartbeatInterval, _ = time.ParseDuration(os.Getenv("WORKER_HEARTBEAT_INTERVAL"))
 	if cfg.WorkerHeartbeatInterval == 0 {
-		cfg.WorkerHeartbeatInterval = 5 * time.Second
+		cfg.WorkerHeartbeatInterval = 10 * time.Second
 	}
 	cfg.WorkerHeartbeatTimeout, _ = time.ParseDuration(os.Getenv("WORKER_HEARTBEAT_TIMEOUT"))
 	if cfg.WorkerHeartbeatTimeout == 0 {
-		cfg.WorkerHeartbeatTimeout = 20 * time.Second
+		cfg.WorkerHeartbeatTimeout = 30 * time.Second
 	}
+	cfg.WorkerShutdownTimeout, _ = time.ParseDuration(os.Getenv("WORKER_SHUTDOWN_TIMEOUT"))
+	if cfg.WorkerShutdownTimeout == 0 {
+		cfg.WorkerShutdownTimeout = 30 * time.Second
+	}
+	cfg.GeminiAPIKey = os.Getenv("GEMINI_API_KEY")
+
 	cfg.JobLeaseDuration, _ = time.ParseDuration(os.Getenv("JOB_LEASE_DURATION"))
 	if cfg.JobLeaseDuration == 0 {
 		cfg.JobLeaseDuration = 30 * time.Second

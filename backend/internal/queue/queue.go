@@ -29,6 +29,9 @@ type JobQueue interface {
 	// Ack acknowledges that the message has been durably handled.
 	Ack(ctx context.Context, messageID string) error
 
+	// PublishJobUpdate broadcasts a real-time update for a specific job.
+	PublishJobUpdate(ctx context.Context, jobID string, payload []byte) error
+
 	// Close gracefully shuts down the queue.
 	Close()
 }

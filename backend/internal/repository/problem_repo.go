@@ -14,7 +14,7 @@ var ErrProblemNotFound = errors.New("problem not found")
 type ProblemRepository interface {
 	Create(ctx context.Context, p *domain.Problem) error
 	GetByID(ctx context.Context, id string) (domain.Problem, error)
-	// Additional methods like Update, List can be added later
+	ListAll(ctx context.Context) ([]domain.Problem, error)
 }
 
 type PostgresProblemRepository struct {
@@ -70,4 +70,41 @@ func (r *PostgresProblemRepository) GetByID(ctx context.Context, id string) (dom
 	p.Status = domain.ProblemStatus(status)
 
 	return p, nil
+}
+
+func (r *PostgresProblemRepository) ListAll(ctx context.Context) ([]domain.Problem, error) {
+	query := `
+		SELECT id, title, slug, description, input_description, output_description,
+		constraints, time_limit_ms, memory_limit_mb, comparison_mode,
+		float_epsilon, status, created_at
+		FROM problems ORDER BY created_at DESC
+	`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var problems []domain.Problem
+	for rows.Next() {
+		var p domain.Problem
+		var compMode string
+		var status string
+		if err := rows.Scan(
+			&p.ID, &p.Title, &p.Slug, &p.Description, &p.InputDescription, &p.OutputDescription,
+			&p.Constraints, &p.TimeLimitMs, &p.MemoryLimitMB, &compMode,
+			&p.FloatEpsilon, &status, &p.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		p.ComparisonMode = domain.ComparisonMode(compMode)
+		p.Status = domain.ProblemStatus(status)
+		problems = append(problems, p)
+	}
+
+	if problems == nil {
+		problems = []domain.Problem{}
+	}
+
+	return problems, nil
 }

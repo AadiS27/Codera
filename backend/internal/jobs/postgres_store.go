@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -32,26 +33,22 @@ func (s *PostgresJobStore) Create(ctx context.Context, job *ExecutionJob) error 
 
 	query := `
 		INSERT INTO executions (
-			id, language, source_code, input, job_status, created_at, max_attempts
+			id, language, source_code, inputs, job_status,
+			created_at, max_attempts
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7
 		)`
-
-	// Default max attempts is 5, but we can set it if provided on the job struct. 
-	// For now let's default to 5 in code to be explicit.
-	maxAttempts := job.MaxAttempts
-	if maxAttempts <= 0 {
-		maxAttempts = 5
-	}
+	
+	inputsJSON, _ := json.Marshal(job.Inputs)
 
 	_, err := s.pool.Exec(ctx, query,
 		job.ID,
-		string(job.Language),
+		job.Language,
 		job.SourceCode,
-		job.Input,
+		inputsJSON,
 		string(job.Status),
 		job.CreatedAt,
-		maxAttempts,
+		job.MaxAttempts,
 	)
 
 	if err != nil {
@@ -63,8 +60,8 @@ func (s *PostgresJobStore) Create(ctx context.Context, job *ExecutionJob) error 
 func (s *PostgresJobStore) Get(ctx context.Context, id string) (*ExecutionJob, error) {
 	query := `
 		SELECT 
-			id, language, source_code, input, job_status, result_status,
-			stdout, stderr, exit_code, created_at, claimed_at, started_at, completed_at,
+			id, language, source_code, inputs, job_status, results,
+			created_at, claimed_at, started_at, completed_at,
 			worker_id, attempt_count, max_attempts, next_retry_at, lease_expires_at, 
 			last_error, dead_lettered_at, last_dispatched_at
 		FROM executions
@@ -73,20 +70,17 @@ func (s *PostgresJobStore) Get(ctx context.Context, id string) (*ExecutionJob, e
 	row := s.pool.QueryRow(ctx, query, id)
 
 	var job ExecutionJob
+	var inputsJSON []byte
+	var resultsJSON []byte
 	var status string
-	var resultStatus, stdout, stderr *string
-	var exitCode *int
 
 	err := row.Scan(
 		&job.ID,
 		&job.Language,
 		&job.SourceCode,
-		&job.Input,
+		&inputsJSON,
 		&status,
-		&resultStatus,
-		&stdout,
-		&stderr,
-		&exitCode,
+		&resultsJSON,
 		&job.CreatedAt,
 		&job.ClaimedAt,
 		&job.StartedAt,
@@ -109,22 +103,11 @@ func (s *PostgresJobStore) Get(ctx context.Context, id string) (*ExecutionJob, e
 	}
 
 	job.Status = JobStatus(status)
-
-	// Reconstruct the result if completed
-	if resultStatus != nil {
-		res := domain.ExecutionResult{
-			Status: domain.ExecutionStatus(*resultStatus),
-		}
-		if stdout != nil {
-			res.Stdout = *stdout
-		}
-		if stderr != nil {
-			res.Stderr = *stderr
-		}
-		if exitCode != nil {
-			res.ExitCode = *exitCode
-		}
-		job.Result = &res
+	if len(inputsJSON) > 0 {
+		json.Unmarshal(inputsJSON, &job.Inputs)
+	}
+	if len(resultsJSON) > 0 {
+		json.Unmarshal(resultsJSON, &job.Results)
 	}
 
 	return &job, nil
@@ -175,26 +158,22 @@ func (s *PostgresJobStore) MarkRunning(ctx context.Context, id string, workerID 
 	return nil
 }
 
-func (s *PostgresJobStore) Complete(ctx context.Context, id string, workerID string, result domain.ExecutionResult) error {
+func (s *PostgresJobStore) Complete(ctx context.Context, id string, workerID string, results []domain.ExecutionResult) error {
 	query := `
 		UPDATE executions
 		SET 
 			job_status = $1, 
-			result_status = $2,
-			stdout = $3,
-			stderr = $4,
-			exit_code = $5,
+			results = $2,
 			completed_at = NOW(),
 			worker_id = NULL,
 			lease_expires_at = NULL
-		WHERE id = $6 AND job_status = $7 AND worker_id = $8`
+		WHERE id = $3 AND job_status = $4 AND worker_id = $5`
+
+	resultsJSON, _ := json.Marshal(results)
 
 	cmd, err := s.pool.Exec(ctx, query,
 		string(StatusCompleted),
-		string(result.Status),
-		result.Stdout,
-		result.Stderr,
-		result.ExitCode,
+		resultsJSON,
 		id,
 		string(StatusRunning),
 		workerID,

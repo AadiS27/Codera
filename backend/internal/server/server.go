@@ -12,6 +12,7 @@ import (
 	"github.com/codera/code-executor/internal/db"
 	"github.com/codera/code-executor/internal/jobs"
 	phttp "github.com/codera/code-executor/internal/platform/http"
+	"github.com/codera/code-executor/internal/repository"
 )
 
 type Server struct {
@@ -26,9 +27,10 @@ type Server struct {
 	probHandler *ProblemHandler
 	subHandler  *SubmissionHandler
 	runHandler  *RunHandler
+	wsHandler   *WSHandler
 }
 
-func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, probHandler *ProblemHandler, subHandler *SubmissionHandler, runHandler *RunHandler, database *db.DB, redisDB *db.RedisDB) *Server {
+func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, probHandler *ProblemHandler, subHandler *SubmissionHandler, runHandler *RunHandler, database *db.DB, redisDB *db.RedisDB, subRepo repository.SubmissionRepository) *Server {
 	mux := http.NewServeMux()
 
 	s := &Server{
@@ -40,6 +42,7 @@ func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, prob
 		probHandler: probHandler,
 		subHandler:  subHandler,
 		runHandler:  runHandler,
+		wsHandler:   NewWSHandler(jobService, subRepo, redisDB.Client),
 	}
 
 	mux.HandleFunc("/health/live", s.handleHealthLive())
@@ -59,6 +62,7 @@ func New(cfg *config.Config, logger *slog.Logger, jobService *jobs.Service, prob
 	s.probHandler.RegisterRoutes(mux)
 	s.subHandler.RegisterRoutes(mux)
 	s.runHandler.RegisterRoutes(mux)
+	s.wsHandler.RegisterRoutes(mux)
 
 	// Apply Middlewares: CORS -> Recovery -> RequestID -> RequestLogger
 	handler := phttp.Chain(mux,

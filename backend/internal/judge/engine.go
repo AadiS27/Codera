@@ -2,13 +2,16 @@ package judge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/codera/code-executor/internal/ai"
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/domain"
 	"github.com/codera/code-executor/internal/language"
+	"github.com/codera/code-executor/internal/queue"
 	"github.com/codera/code-executor/internal/repository"
 	"github.com/codera/code-executor/internal/sandbox"
 )
@@ -21,6 +24,8 @@ type Engine struct {
 	subRepo      repository.SubmissionRepository
 	probRepo     repository.ProblemRepository
 	testCaseRepo repository.TestCaseRepository
+	queue        queue.JobQueue
+	analyzer     *ai.Analyzer
 }
 
 func NewEngine(
@@ -31,6 +36,7 @@ func NewEngine(
 	subRepo repository.SubmissionRepository,
 	probRepo repository.ProblemRepository,
 	testCaseRepo repository.TestCaseRepository,
+	q queue.JobQueue,
 ) *Engine {
 	return &Engine{
 		cfg:          cfg,
@@ -40,7 +46,14 @@ func NewEngine(
 		subRepo:      subRepo,
 		probRepo:     probRepo,
 		testCaseRepo: testCaseRepo,
+		queue:        q,
+		analyzer:     nil, // Will be injected if API key is provided
 	}
+}
+
+// SetAnalyzer sets the AI analyzer after creation
+func (e *Engine) SetAnalyzer(analyzer *ai.Analyzer) {
+	e.analyzer = analyzer
 }
 
 func (e *Engine) Judge(ctx context.Context, submissionID string) error {
@@ -53,6 +66,9 @@ func (e *Engine) Judge(ctx context.Context, submissionID string) error {
 	// Update status to RUNNING
 	sub.Status = domain.SubmissionStatusRunning
 	_ = e.subRepo.Update(ctx, sub)
+	if payload, err := json.Marshal(sub); err == nil {
+		_ = e.queue.PublishJobUpdate(ctx, sub.ID, payload)
+	}
 
 	// Finalize submission on exit
 	defer func() {
@@ -62,6 +78,9 @@ func (e *Engine) Judge(ctx context.Context, submissionID string) error {
 			sub.Status = domain.SubmissionStatusCompleted
 		}
 		_ = e.subRepo.Update(context.Background(), sub)
+		if payload, err := json.Marshal(sub); err == nil {
+			_ = e.queue.PublishJobUpdate(context.Background(), sub.ID, payload)
+		}
 	}()
 
 	// 2. Fetch problem and test cases
@@ -199,6 +218,18 @@ func (e *Engine) Judge(ctx context.Context, submissionID string) error {
 	sub.ExecutionTimeMs = maxExecTime
 	sub.MemoryUsedBytes = maxMemUsed
 	sub.Verdict = domain.VerdictAccepted
+
+	if e.analyzer != nil {
+		analysis, err := e.analyzer.AnalyzeComplexity(ctx, sub.SourceCode, string(sub.Language))
+		if err == nil && analysis != nil {
+			sub.AITimeComplexity = analysis.TimeComplexity
+			sub.AISpaceComplexity = analysis.SpaceComplexity
+			sub.AIFeedback = analysis.Feedback
+		} else if err != nil {
+			// Log the error so we know why AI analysis failed
+			fmt.Printf("AI Analysis Failed: %v\n", err)
+		}
+	}
 
 	return nil
 }

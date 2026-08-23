@@ -30,14 +30,16 @@ func (r *PostgresSubmissionRepository) Create(ctx context.Context, s *domain.Sub
 		INSERT INTO submissions (
 			user_id, problem_id, language, source_code, status, verdict,
 			execution_time_ms, memory_used_bytes, passed_test_cases, total_test_cases,
+			ai_time_complexity, ai_space_complexity, ai_feedback,
 			created_at, completed_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
 		) RETURNING id
 	`
 	err := r.db.QueryRow(ctx, query,
 		s.UserID, s.ProblemID, string(s.Language), s.SourceCode, string(s.Status), string(s.Verdict),
 		s.ExecutionTimeMs, s.MemoryUsedBytes, s.PassedTestCases, s.TotalTestCases,
+		s.AITimeComplexity, s.AISpaceComplexity, s.AIFeedback,
 		s.CreatedAt, s.CompletedAt,
 	).Scan(&s.ID)
 	return err
@@ -47,6 +49,7 @@ func (r *PostgresSubmissionRepository) GetByID(ctx context.Context, id string) (
 	query := `
 		SELECT id, user_id, problem_id, language, source_code, status, verdict,
 		execution_time_ms, memory_used_bytes, passed_test_cases, total_test_cases,
+		COALESCE(ai_time_complexity, ''), COALESCE(ai_space_complexity, ''), COALESCE(ai_feedback, ''),
 		created_at, completed_at
 		FROM submissions WHERE id = $1
 	`
@@ -56,6 +59,7 @@ func (r *PostgresSubmissionRepository) GetByID(ctx context.Context, id string) (
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&s.ID, &s.UserID, &s.ProblemID, &lang, &s.SourceCode, &status, &verdict,
 		&s.ExecutionTimeMs, &s.MemoryUsedBytes, &s.PassedTestCases, &s.TotalTestCases,
+		&s.AITimeComplexity, &s.AISpaceComplexity, &s.AIFeedback,
 		&s.CreatedAt, &s.CompletedAt,
 	)
 	if err != nil {
@@ -77,12 +81,14 @@ func (r *PostgresSubmissionRepository) Update(ctx context.Context, s domain.Subm
 		UPDATE submissions SET
 			status = $1, verdict = $2, execution_time_ms = $3,
 			memory_used_bytes = $4, passed_test_cases = $5, total_test_cases = $6,
-			completed_at = $7
-		WHERE id = $8
+			ai_time_complexity = $7, ai_space_complexity = $8, ai_feedback = $9,
+			completed_at = $10
+		WHERE id = $11
 	`
 	_, err := r.db.Exec(ctx, query,
 		string(s.Status), string(s.Verdict), s.ExecutionTimeMs,
 		s.MemoryUsedBytes, s.PassedTestCases, s.TotalTestCases,
+		s.AITimeComplexity, s.AISpaceComplexity, s.AIFeedback,
 		s.CompletedAt, s.ID,
 	)
 	return err

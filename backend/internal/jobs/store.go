@@ -30,7 +30,7 @@ type JobStore interface {
 	
 	// Complete atomically transitions a job from RUNNING to COMPLETED and stores the result.
 	// Fails if the job is not owned by the worker.
-	Complete(ctx context.Context, id string, workerID string, result domain.ExecutionResult) error
+	Complete(ctx context.Context, id string, workerID string, results []domain.ExecutionResult) error
 
 	// FailJob handles a retryable or permanent platform failure, moving the job to QUEUED or DEAD_LETTERED.
 	FailJob(ctx context.Context, id string, workerID string, errMsg string, backoff time.Duration) error

@@ -21,6 +21,7 @@ func (h *ProblemHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/problems", h.createProblem)
 	mux.HandleFunc("POST /admin/problems/full", h.createFullProblem)
 	mux.HandleFunc("POST /admin/problems/{id}/test-cases", h.createTestCase)
+	mux.HandleFunc("GET /problems", h.listProblems)
 	mux.HandleFunc("GET /problems/{id}", h.getProblem)
 }
 
@@ -123,4 +124,15 @@ func (h *ProblemHandler) getProblem(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *ProblemHandler) listProblems(w http.ResponseWriter, r *http.Request) {
+	problems, err := h.probRepo.ListAll(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(problems)
 }

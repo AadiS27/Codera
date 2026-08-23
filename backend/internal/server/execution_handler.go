@@ -28,7 +28,7 @@ func (h *ExecutionHandler) HandleExecute() http.HandlerFunc {
 			return
 		}
 
-		var req domain.ExecutionRequest
+		var req domain.JobRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 			return
@@ -103,8 +103,8 @@ func (h *ExecutionHandler) HandleGetExecution() http.HandlerFunc {
 		if job.CompletedAt != nil {
 			resp["completed_at"] = job.CompletedAt
 		}
-		if job.Result != nil {
-			resp["result"] = job.Result
+		if len(job.Results) > 0 {
+			resp["results"] = job.Results
 		}
 
 		w.Header().Set("Content-Type", "application/json")

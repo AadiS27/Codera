@@ -1,273 +1,419 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { Database, Plus, Save } from 'lucide-react';
 
-export default function AdminPage() {
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
-  
-  const [problem, setProblem] = useState({
+export default function AdminPanel() {
+  const [formData, setFormData] = useState({
     title: '',
-    slug: '',
     description: '',
+    difficulty: 1,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
     input_description: '',
     output_description: '',
     constraints: '',
-    time_limit_ms: 2000,
-    memory_limit_mb: 256,
-    comparison_mode: 'EXACT',
-    status: 'PUBLISHED'
+    test_cases: [
+      { input: '', expected_output: '', is_hidden: false, explanation: '' }
+    ]
   });
 
-  const [testCases, setTestCases] = useState([
-    { input: '', expected_output: '', visibility: 'PUBLIC' }
-  ]);
+  const [status, setStatus] = useState({ type: '', message: '' });
 
-  const handleSubmit = async (e: any) => {
+  const addTestCase = () => {
+    setFormData(prev => ({
+      ...prev,
+      test_cases: [...prev.test_cases, { input: '', expected_output: '', is_hidden: false, explanation: '' }]
+    }));
+  };
+
+  const updateTestCase = (index: number, field: string, value: any) => {
+    const newTestCases = [...formData.test_cases];
+    newTestCases[index] = { ...newTestCases[index], [field]: value };
+    setFormData(prev => ({ ...prev, test_cases: newTestCases }));
+  };
+
+  const removeTestCase = (index: number) => {
+    const newTestCases = formData.test_cases.filter((_, i) => i !== index);
+    setFormData(prev => ({ ...prev, test_cases: newTestCases }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setSuccess('');
-    
+    setStatus({ type: 'loading', message: '> TRANSMITTING PROTOCOL...' });
+
     try {
       const res = await fetch('http://localhost:8080/admin/problems/full', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          problem: {
-            ...problem,
-            time_limit_ms: parseInt(problem.time_limit_ms.toString(), 10),
-            memory_limit_mb: parseInt(problem.memory_limit_mb.toString(), 10),
-          },
-          test_cases: testCases
-        })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
       });
 
       if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(`HTTP error! status: ${res.status}`);
       }
+
+      const result = await res.json();
+      setStatus({ type: 'success', message: `> SUCCESS: ENTRY [${result.id}] COMMITTED.` });
       
-      const data = await res.json();
-      setSuccess(`Problem created with ID: ${data.problem.id}`);
-      // Reset form
-      setProblem({ ...problem, title: '', slug: '', description: '' });
-      setTestCases([{ input: '', expected_output: '', visibility: 'PUBLIC' }]);
+      // Reset form on success
+      setFormData({
+        title: '',
+        description: '',
+        difficulty: 1,
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        input_description: '',
+        output_description: '',
+        constraints: '',
+        test_cases: [{ input: '', expected_output: '', is_hidden: false, explanation: '' }]
+      });
+      
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
-    } finally {
-      setLoading(false);
+      setStatus({ type: 'error', message: `> ERROR: ${err.message}` });
     }
-  };
-
-  const addTestCase = () => {
-    setTestCases([...testCases, { input: '', expected_output: '', visibility: 'HIDDEN' }]);
-  };
-
-  const updateTestCase = (index: number, field: string, value: string) => {
-    const newTc = [...testCases];
-    newTc[index] = { ...newTc[index], [field]: value };
-    setTestCases(newTc);
   };
 
   return (
     <div className="admin-container">
-      <header className="admin-header">
-        <h1>Command Center <span className="text-muted">/ System Override</span></h1>
-        <Link href="/problems" className="btn-secondary" style={{ fontSize: '0.8rem' }}>
-          &larr; Return to Workspace
-        </Link>
-      </header>
+      <div className="admin-header">
+        <h1 className="cyber-glitch-text" data-text="SYS.OVERRIDE // AUTHOR">
+          SYS.OVERRIDE // AUTHOR
+        </h1>
+        <p className="terminal-subtitle">
+          <span className="prefix">&gt; </span> WARNING: Level 4 Authorization required. Modifying core algorithms...<span className="blinking-cursor"></span>
+        </p>
+      </div>
 
-      {success && <div className="success-banner">{success}</div>}
-
-      <form onSubmit={handleSubmit} className="admin-form glass-panel">
-        <h2 className="section-title">Initialize Target Parameters</h2>
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Designation (Title)</label>
-            <input required value={problem.title} onChange={e => setProblem({...problem, title: e.target.value})} />
-          </div>
-          <div className="form-group">
-            <label>Slug Identifier</label>
-            <input required value={problem.slug} onChange={e => setProblem({...problem, slug: e.target.value})} />
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label>Mission Brief (Description)</label>
-          <textarea required rows={5} value={problem.description} onChange={e => setProblem({...problem, description: e.target.value})} />
-        </div>
-
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Input Vector Format</label>
-            <textarea required rows={3} value={problem.input_description} onChange={e => setProblem({...problem, input_description: e.target.value})} />
-          </div>
-          <div className="form-group">
-            <label>Expected Output Format</label>
-            <textarea required rows={3} value={problem.output_description} onChange={e => setProblem({...problem, output_description: e.target.value})} />
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label>System Constraints</label>
-          <textarea required rows={2} value={problem.constraints} onChange={e => setProblem({...problem, constraints: e.target.value})} />
-        </div>
-
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Time Limit (ms)</label>
-            <input type="number" required value={problem.time_limit_ms} onChange={e => setProblem({...problem, time_limit_ms: parseInt(e.target.value) || 0})} />
-          </div>
-          <div className="form-group">
-            <label>Memory Limit (MB)</label>
-            <input type="number" required value={problem.memory_limit_mb} onChange={e => setProblem({...problem, memory_limit_mb: parseInt(e.target.value) || 0})} />
-          </div>
-          <div className="form-group">
-            <label>Comparison Protocol</label>
-            <select value={problem.comparison_mode} onChange={e => setProblem({...problem, comparison_mode: e.target.value})}>
-              <option value="EXACT">Strict (Byte for Byte)</option>
-              <option value="NORMALIZED_WHITESPACE">Forgiving Whitespace</option>
-              <option value="FLOAT_EPSILON">Floating Point Epsilon</option>
-            </select>
-          </div>
-        </div>
-
-        <h2 className="section-title" style={{ marginTop: '3rem' }}>Validation Matrices (Test Cases)</h2>
-        
-        {testCases.map((tc, idx) => (
-          <div key={idx} className="test-case-block">
-            <div className="tc-header">
-              <h3>Matrix #{idx + 1}</h3>
-              <select value={tc.visibility} onChange={e => updateTestCase(idx, 'visibility', e.target.value)}>
-                <option value="PUBLIC">Public Exposure</option>
-                <option value="HIDDEN">Classified (Hidden)</option>
-              </select>
+      <div className="admin-body">
+        <form onSubmit={handleSubmit} className="cyber-form holo-panel cyber-chamfer">
+          
+          <div className="form-grid">
+            <div className="form-group span-full">
+              <label>PROTOCOL_NAME [TITLE]</label>
+              <input 
+                type="text" 
+                className="cyber-chamfer-sm"
+                value={formData.title} 
+                onChange={e => setFormData({...formData, title: e.target.value})} 
+                required 
+              />
             </div>
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Input Data</label>
-                <textarea rows={3} value={tc.input} onChange={e => updateTestCase(idx, 'input', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Expected Output</label>
-                <textarea rows={3} value={tc.expected_output} onChange={e => updateTestCase(idx, 'expected_output', e.target.value)} />
-              </div>
+
+            <div className="form-group span-half">
+              <label>THREAT_LEVEL [DIFFICULTY 1-5]</label>
+              <input 
+                type="number" 
+                className="cyber-chamfer-sm"
+                min="1" max="5" 
+                value={formData.difficulty} 
+                onChange={e => setFormData({...formData, difficulty: parseInt(e.target.value)})} 
+                required 
+              />
+            </div>
+
+            <div className="form-group span-full">
+              <label>PROBLEM_STATEMENT [MD_SUPPORTED]</label>
+              <textarea 
+                className="cyber-chamfer-sm"
+                rows={6}
+                value={formData.description} 
+                onChange={e => setFormData({...formData, description: e.target.value})} 
+                required 
+              />
+            </div>
+
+            <div className="form-group span-half">
+              <label>INPUT_SCHEMA</label>
+              <textarea 
+                className="cyber-chamfer-sm"
+                rows={3}
+                value={formData.input_description} 
+                onChange={e => setFormData({...formData, input_description: e.target.value})} 
+              />
+            </div>
+
+            <div className="form-group span-half">
+              <label>OUTPUT_SCHEMA</label>
+              <textarea 
+                className="cyber-chamfer-sm"
+                rows={3}
+                value={formData.output_description} 
+                onChange={e => setFormData({...formData, output_description: e.target.value})} 
+              />
+            </div>
+
+            <div className="form-group span-full">
+              <label>SYSTEM_CONSTRAINTS</label>
+              <textarea 
+                className="cyber-chamfer-sm"
+                rows={3}
+                value={formData.constraints} 
+                onChange={e => setFormData({...formData, constraints: e.target.value})} 
+              />
             </div>
           </div>
-        ))}
 
-        <div className="form-actions">
-          <button type="button" className="btn-secondary" onClick={addTestCase}>
-            + Add Validation Matrix
-          </button>
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'UPLOADING...' : 'COMMIT TO CORE'}
-          </button>
-        </div>
-      </form>
+          <div className="test-cases-section">
+            <div className="section-header">
+              <h3><Database size={18} /> VALIDATION_MATRICES [TEST_CASES]</h3>
+              <button type="button" onClick={addTestCase} className="cyber-btn cyber-btn-outline cyber-chamfer-sm">
+                <Plus size={14} /> ADD_MATRIX
+              </button>
+            </div>
+            
+            <div className="test-cases-grid">
+              {formData.test_cases.map((tc, idx) => (
+                <div key={idx} className="test-case-card cyber-card cyber-chamfer-sm">
+                  <div className="tc-header">
+                    <h4>MATRIX_{idx + 1}</h4>
+                    {formData.test_cases.length > 1 && (
+                      <button 
+                        type="button" 
+                        onClick={() => removeTestCase(idx)}
+                        className="remove-btn"
+                      >
+                        [X]
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="tc-body">
+                    <div className="form-group">
+                      <label>INPUT_PAYLOAD</label>
+                      <textarea 
+                        className="cyber-input"
+                        rows={3}
+                        value={tc.input} 
+                        onChange={e => updateTestCase(idx, 'input', e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>EXPECTED_STATE</label>
+                      <textarea 
+                        className="cyber-input"
+                        rows={3}
+                        value={tc.expected_output} 
+                        onChange={e => updateTestCase(idx, 'expected_output', e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    
+                    <div className="tc-footer">
+                      <label className="checkbox-label">
+                        <input 
+                          type="checkbox" 
+                          checked={tc.is_hidden} 
+                          onChange={e => updateTestCase(idx, 'is_hidden', e.target.checked)} 
+                        />
+                        <span className="checkbox-text">CLASSIFIED (HIDDEN)</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-actions">
+            {status.message && (
+              <div className={`status-message ${status.type}`}>
+                {status.message}
+              </div>
+            )}
+            <button type="submit" className="cyber-btn cyber-btn-primary cyber-chamfer" disabled={status.type === 'loading'}>
+              <Save size={16} /> INITIALIZE_OVERRIDE
+            </button>
+          </div>
+        </form>
+      </div>
 
       <style /* eslint-disable-next-line react/no-unknown-property */ jsx>{`
         .admin-container {
-          max-width: 900px;
-          margin: 0 auto;
           padding: 4rem 2rem;
-          min-height: 100vh;
+          max-width: 1200px;
+          margin: 0 auto;
         }
 
         .admin-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 3rem;
-          border-bottom: 1px solid var(--border-subtle);
-          padding-bottom: 1rem;
+          margin-bottom: 4rem;
+          border-left: 4px solid var(--accent-destructive);
+          padding-left: 1.5rem;
         }
 
-        h1 {
-          font-weight: 300;
-          letter-spacing: -0.02em;
+        .terminal-subtitle {
+          color: var(--fg-muted);
+          font-family: var(--font-body);
+          margin-top: 1rem;
         }
 
-        .text-muted {
-          color: var(--text-muted);
+        .prefix {
+          color: var(--accent-destructive);
+          font-weight: bold;
         }
 
-        .admin-form {
-          padding: 2.5rem;
-        }
-
-        .section-title {
-          font-size: 1.1rem;
-          color: var(--accent-cyan);
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          margin-bottom: 1.5rem;
-          border-bottom: 1px solid rgba(0, 240, 255, 0.2);
-          padding-bottom: 0.5rem;
-          display: inline-block;
+        .cyber-form {
+          padding: 3rem;
         }
 
         .form-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-          margin-bottom: 1.5rem;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 2rem;
+          margin-bottom: 4rem;
         }
 
         .form-group {
           display: flex;
           flex-direction: column;
-          gap: 0.5rem;
-          margin-bottom: 1.5rem;
+          gap: 0.75rem;
+        }
+
+        .span-full {
+          grid-column: 1 / -1;
+        }
+
+        .span-half {
+          grid-column: span 3;
+        }
+        @media (min-width: 768px) {
+          .span-half {
+            grid-column: span 1.5; /* Note: Grid doesn't support fractional spans, so we use 3 columns and span 2/1 usually. Let's adjust layout. */
+          }
         }
 
         label {
+          font-family: var(--font-label);
+          color: var(--accent-tertiary);
           font-size: 0.85rem;
-          color: var(--text-secondary);
-          text-transform: uppercase;
           letter-spacing: 0.05em;
         }
 
-        .test-case-block {
-          background: rgba(0, 0, 0, 0.3);
-          border: 1px solid var(--border-subtle);
+        textarea {
+          resize: vertical;
+        }
+
+        .test-cases-section {
+          margin-bottom: 3rem;
+          border-top: 1px solid var(--border-subtle);
+          padding-top: 3rem;
+        }
+
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2rem;
+        }
+
+        .section-header h3 {
+          margin: 0;
+          color: var(--accent-primary);
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .test-cases-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 1.5rem;
+        }
+
+        .test-case-card {
+          background: rgba(0, 0, 0, 0.4);
           padding: 1.5rem;
-          border-radius: 4px;
-          margin-bottom: 1.5rem;
+          border: 1px solid var(--border-subtle);
         }
 
         .tc-header {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
+          margin-bottom: 1.5rem;
+          border-bottom: 1px solid var(--border-subtle);
+          padding-bottom: 0.5rem;
         }
 
-        .tc-header h3 {
+        .tc-header h4 {
           margin: 0;
-          font-size: 1rem;
-          color: var(--text-primary);
+          color: var(--fg-primary);
+          font-family: var(--font-label);
+        }
+
+        .remove-btn {
+          background: transparent;
+          border: none;
+          color: var(--accent-destructive);
+          font-family: var(--font-label);
+          cursor: pointer;
+        }
+
+        .remove-btn:hover {
+          text-shadow: var(--glow-destructive);
+        }
+
+        .tc-body {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1.5rem;
+        }
+
+        .cyber-input {
+          background: transparent;
+          border: 1px solid var(--border-subtle);
+          color: var(--fg-primary);
+          padding: 0.5rem;
+          font-family: var(--font-body);
+        }
+
+        .cyber-input:focus {
+          border-color: var(--accent-tertiary);
+          outline: none;
+        }
+
+        .tc-footer {
+          grid-column: 1 / -1;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          cursor: pointer;
+        }
+
+        .checkbox-label input {
+          width: auto;
+          accent-color: var(--accent-destructive);
+        }
+
+        .checkbox-text {
+          color: var(--fg-muted);
         }
 
         .form-actions {
           display: flex;
           justify-content: space-between;
+          align-items: center;
           margin-top: 3rem;
           border-top: 1px solid var(--border-subtle);
           padding-top: 2rem;
         }
 
-        .success-banner {
-          background: rgba(0, 240, 255, 0.1);
-          border: 1px solid var(--accent-cyan);
-          color: var(--accent-cyan);
-          padding: 1rem;
-          border-radius: 4px;
-          margin-bottom: 2rem;
-          text-align: center;
-          font-family: var(--font-mono);
+        .status-message {
+          font-family: var(--font-body);
+          font-size: 0.9rem;
         }
+
+        .status-message.loading { color: var(--accent-tertiary); }
+        .status-message.success { color: var(--accent-primary); text-shadow: var(--glow-primary-sm); }
+        .status-message.error { color: var(--accent-destructive); text-shadow: var(--glow-destructive); }
       `}</style>
     </div>
   );

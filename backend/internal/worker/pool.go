@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -100,12 +101,9 @@ func (p *Pool) processJobSafely(ctx context.Context, msg queue.QueueMessage, wor
 			log.Error("Worker recovered from panic", "job_id", msg.JobID, "panic", r)
 			
 			// Attempt to mark the job as internally failed
-			res := domain.ExecutionResult{
-				Status:   domain.StatusRuntimeError,
-				Stderr:   "Internal Platform Error: Worker Panic",
-				ExitCode: -1,
+			if err := p.store.FailJob(context.Background(), msg.JobID, workerName, "Worker crashed during execution", 0); err != nil {
+				p.logger.Error("Failed to record FailJob in DB during recovery", "job_id", msg.JobID, "error", err)
 			}
-			_ = p.store.Complete(context.Background(), msg.JobID, workerName, res)
 		}
 	}()
 
@@ -165,6 +163,11 @@ func (p *Pool) processRun(ctx context.Context, msg queue.QueueMessage, workerNam
 		return
 	}
 
+	// Publish RUNNING update
+	if payload, err := json.Marshal(job); err == nil {
+		_ = p.queue.PublishJobUpdate(context.Background(), msg.JobID, payload)
+	}
+
 	// Create an execution context that is cancelled if worker stops or lease renewal fails
 	execCtx, cancelExec := context.WithCancel(ctx)
 	defer cancelExec()
@@ -187,35 +190,46 @@ func (p *Pool) processRun(ctx context.Context, msg queue.QueueMessage, workerNam
 		}
 	}()
 
-	// 3. Map to ExecutionRequest
-	req := domain.ExecutionRequest{
-		Language:   job.Language,
-		SourceCode: job.SourceCode,
-		Input:      job.Input,
-	}
-
-	// 4. Execute
-	result, err := p.execService.Execute(execCtx, req)
-	if err != nil {
-		if execCtx.Err() != nil {
-			log.Warn("Execution cancelled locally (lease lost or shutdown)", "job_id", msg.JobID)
-			return
+	// 3. Map to ExecutionRequest and execute for each input
+	var results []domain.ExecutionResult
+	for _, input := range job.Inputs {
+		req := domain.ExecutionRequest{
+			Language:   job.Language,
+			SourceCode: job.SourceCode,
+			Input:      input,
 		}
 
-		log.Error("Platform Execution failed", "job_id", msg.JobID, "error", err)
-		// Platform failure (Docker missing, internal error) -> FailJob for retry
-		backoff := 2 * time.Second // Simple backoff for now, can be improved in production
-		if failErr := p.store.FailJob(context.Background(), msg.JobID, workerName, err.Error(), backoff); failErr != nil {
-			log.Error("Failed to record FailJob in DB", "job_id", msg.JobID, "error", failErr)
+		result, err := p.execService.Execute(execCtx, req)
+		if err != nil {
+			if execCtx.Err() != nil {
+				log.Warn("Execution cancelled locally (lease lost or shutdown)", "job_id", msg.JobID)
+				return
+			}
+
+			log.Error("Platform Execution failed", "job_id", msg.JobID, "error", err)
+			// Platform failure (Docker missing, internal error) -> FailJob for retry
+			backoff := 2 * time.Second // Simple backoff for now, can be improved in production
+			if failErr := p.store.FailJob(context.Background(), msg.JobID, workerName, err.Error(), backoff); failErr != nil {
+				log.Error("Failed to record FailJob in DB", "job_id", msg.JobID, "error", failErr)
+			}
+			return // Let the Redis message un-ACK so pending recovery or DLQ handles it
 		}
-		return // Let the Redis message un-ACK so pending recovery or DLQ handles it
+		
+		results = append(results, result)
 	}
 
 	// For user failures (StatusCompilationError, StatusRuntimeError, etc), we Complete normally
 	// 5. Complete in DB
-	if err := p.store.Complete(context.Background(), msg.JobID, workerName, result); err != nil {
+	if err := p.store.Complete(context.Background(), msg.JobID, workerName, results); err != nil {
 		log.Error("Failed to mark job as completed in DB", "job_id", msg.JobID, "error", err)
 		return
+	}
+
+	// Fetch updated job to publish
+	if updatedJob, err := p.store.Get(context.Background(), msg.JobID); err == nil {
+		if payload, err := json.Marshal(updatedJob); err == nil {
+			_ = p.queue.PublishJobUpdate(context.Background(), msg.JobID, payload)
+		}
 	}
 
 	// 6. ACK Redis message
@@ -223,7 +237,7 @@ func (p *Pool) processRun(ctx context.Context, msg queue.QueueMessage, workerNam
 		log.Error("Failed to ACK redis message", "msg_id", msg.ID, "error", err)
 	}
 
-	log.Info("Finished job", "job_id", msg.JobID, "status", result.Status)
+	log.Info("Finished job", "job_id", msg.JobID, "num_results", len(results))
 }
 
 func (p *Pool) Stop(ctx context.Context) {

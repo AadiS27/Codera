@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/codera/code-executor/internal/ai"
 	"github.com/codera/code-executor/internal/config"
 	"github.com/codera/code-executor/internal/db"
 	"github.com/codera/code-executor/internal/domain"
@@ -116,7 +117,21 @@ func main() {
 	compRegistry.Register(domain.ComparisonModeExact, &judge.ExactComparator{})
 	compRegistry.Register(domain.ComparisonModeWhitespace, &judge.WhitespaceComparator{})
 	
-	judgeEngine := judge.NewEngine(cfg, langRegistry, sb, compRegistry, subRepo, probRepo, testCaseRepo)
+	judgeEngine := judge.NewEngine(cfg, langRegistry, sb, compRegistry, subRepo, probRepo, testCaseRepo, redisQueue)
+	
+	var globalAnalyzer *ai.Analyzer
+	if cfg.GeminiAPIKey != "" {
+		analyzer, err := ai.NewAnalyzer(context.Background(), cfg.GeminiAPIKey)
+		if err == nil {
+			globalAnalyzer = analyzer
+			judgeEngine.SetAnalyzer(analyzer)
+			log.Info("AI Analyzer initialized successfully")
+		} else {
+			log.Error("Failed to initialize AI Analyzer", "error", err)
+		}
+	} else {
+		log.Warn("GEMINI_API_KEY not set. AI complexity analysis is disabled.")
+	}
 
 	var workerPool *worker.Pool
 	if role == "worker" || role == "all" {
@@ -139,10 +154,10 @@ func main() {
 		// Initialize server handlers
 		probHandler := server.NewProblemHandler(probRepo, testCaseRepo)
 		subHandler := server.NewSubmissionHandler(subRepo, probRepo, redisQueue, langRegistry)
-		runHandler := server.NewRunHandler(jobService, langRegistry)
+		runHandler := server.NewRunHandler(jobService, langRegistry, globalAnalyzer)
 
 		// Initialize server
-		srv = server.New(cfg, log, jobService, probHandler, subHandler, runHandler, database, redisDB)
+		srv = server.New(cfg, log, jobService, probHandler, subHandler, runHandler, database, redisDB, subRepo)
 
 		// Start the service listening for requests.
 		go func() {

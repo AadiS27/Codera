@@ -26,6 +26,12 @@ const (
 	StatusDeadLetter  ExecutionStatus = "DEAD_LETTERED"
 )
 
+type JobRequest struct {
+	Language   Language `json:"language"`
+	SourceCode string   `json:"source_code"`
+	Inputs     []string `json:"inputs"`
+}
+
 type ExecutionRequest struct {
 	Language   Language `json:"language"`
 	SourceCode string   `json:"source_code"`

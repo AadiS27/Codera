@@ -22,10 +22,10 @@ type ExecutionJob struct {
 	ID         string          `json:"id"`
 	Language   domain.Language `json:"language"`
 	SourceCode string          `json:"source_code"`
-	Input      string          `json:"input"`
+	Inputs     []string        `json:"inputs"`
 	
 	Status JobStatus           `json:"status"`
-	Result *domain.ExecutionResult `json:"result"` // nil until Status == StatusCompleted
+	Results []domain.ExecutionResult `json:"results"` // empty until Status == StatusCompleted
 
 	CreatedAt   time.Time      `json:"created_at"`
 	ClaimedAt   *time.Time     `json:"claimed_at"`
@@ -52,7 +52,7 @@ func (j *ExecutionJob) Clone() *ExecutionJob {
 		ID:         j.ID,
 		Language:   j.Language,
 		SourceCode: j.SourceCode,
-		Input:      j.Input,
+		Inputs:     append([]string(nil), j.Inputs...),
 		Status:     j.Status,
 		CreatedAt:  j.CreatedAt,
 	}
@@ -65,9 +65,8 @@ func (j *ExecutionJob) Clone() *ExecutionJob {
 		t := *j.CompletedAt
 		clone.CompletedAt = &t
 	}
-	if j.Result != nil {
-		r := *j.Result
-		clone.Result = &r
+	if j.Results != nil {
+		clone.Results = append([]domain.ExecutionResult(nil), j.Results...)
 	}
 	if j.ClaimedAt != nil {
 		t := *j.ClaimedAt
