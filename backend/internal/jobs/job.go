@@ -19,27 +19,27 @@ const (
 
 // ExecutionJob represents an async execution task in the system.
 type ExecutionJob struct {
-	ID         string
-	Language   domain.Language
-	SourceCode string
-	Input      string
+	ID         string          `json:"id"`
+	Language   domain.Language `json:"language"`
+	SourceCode string          `json:"source_code"`
+	Input      string          `json:"input"`
 	
-	Status JobStatus
-	Result *domain.ExecutionResult // nil until Status == StatusCompleted
+	Status JobStatus           `json:"status"`
+	Result *domain.ExecutionResult `json:"result"` // nil until Status == StatusCompleted
 
-	CreatedAt   time.Time
-	ClaimedAt   *time.Time
-	StartedAt   *time.Time
-	CompletedAt *time.Time
+	CreatedAt   time.Time      `json:"created_at"`
+	ClaimedAt   *time.Time     `json:"claimed_at"`
+	StartedAt   *time.Time     `json:"started_at"`
+	CompletedAt *time.Time     `json:"completed_at"`
 	
-	WorkerID         *string
-	AttemptCount     int
-	MaxAttempts      int
-	NextRetryAt      *time.Time
-	LeaseExpiresAt   *time.Time
-	LastError        *string
-	DeadLetteredAt   *time.Time
-	LastDispatchedAt *time.Time
+	WorkerID         *string   `json:"worker_id"`
+	AttemptCount     int       `json:"attempt_count"`
+	MaxAttempts      int       `json:"max_attempts"`
+	NextRetryAt      *time.Time `json:"next_retry_at"`
+	LeaseExpiresAt   *time.Time `json:"lease_expires_at"`
+	LastError        *string   `json:"last_error"`
+	DeadLetteredAt   *time.Time `json:"dead_lettered_at"`
+	LastDispatchedAt *time.Time `json:"last_dispatched_at"`
 }
 
 // Clone returns a deep copy of the job to prevent data races and encapsulate state
