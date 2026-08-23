@@ -19,20 +19,20 @@ const (
 )
 
 type Problem struct {
-	ID               string
-	Title            string
-	Slug             string
-	Description      string
-	InputDescription string
-	OutputDescription string
-	Constraints      string
+	ID                string         `json:"id"`
+	Title             string         `json:"title"`
+	Slug              string         `json:"slug"`
+	Description       string         `json:"description"`
+	InputDescription  string         `json:"input_description"`
+	OutputDescription string         `json:"output_description"`
+	Constraints       string         `json:"constraints"`
 	
-	TimeLimitMs      int
-	MemoryLimitMB    int
+	TimeLimitMs       int            `json:"time_limit_ms"`
+	MemoryLimitMB     int            `json:"memory_limit_mb"`
 	
-	ComparisonMode   ComparisonMode
-	FloatEpsilon     float64 // Used if ComparisonMode == FLOAT_EPSILON
+	ComparisonMode    ComparisonMode `json:"comparison_mode"`
+	FloatEpsilon      float64        `json:"float_epsilon"`
 	
-	Status           ProblemStatus
-	CreatedAt        time.Time
+	Status            ProblemStatus  `json:"status"`
+	CreatedAt         time.Time      `json:"created_at"`
 }
