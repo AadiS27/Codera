@@ -71,6 +71,8 @@ func GetProfileForLanguage(lang string) (Profile, error) {
 		profile.Image = "golang:1.22-alpine"
 	case "c", "cpp":
 		profile.Image = "gcc:13" // Alpine gcc lacks some common libs out of the box, use debian-based for now or alpine if careful
+	case "sql":
+		profile.Image = "keinos/sqlite3"
 	default:
 		return Profile{}, ErrUnsupportedLanguage
 	}

@@ -7,6 +7,7 @@ const (
 	LanguagePython Language = "python"
 	LanguageGo     Language = "go"
 	LanguageCpp    Language = "cpp"
+	LanguageSql    Language = "sql"
 )
 type ExecutionStatus string
 

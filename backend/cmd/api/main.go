@@ -17,20 +17,21 @@ import (
 	"github.com/codera/code-executor/internal/execution"
 	"github.com/codera/code-executor/internal/jobs"
 	"github.com/codera/code-executor/internal/platform/logger"
-	"github.com/joho/godotenv"
+	"github.com/codera/code-executor/internal/language/go"
+	"github.com/codera/code-executor/internal/language/java"
+	"github.com/codera/code-executor/internal/language/python"
+	"github.com/codera/code-executor/internal/language/cpp"
+	"github.com/codera/code-executor/internal/language/sql"
 	"github.com/codera/code-executor/internal/queue"
+	"github.com/codera/code-executor/internal/repository"
+	"github.com/codera/code-executor/internal/sandbox"
 	"github.com/codera/code-executor/internal/sandbox/docker"
 	"github.com/codera/code-executor/internal/server"
 	"github.com/codera/code-executor/internal/worker"
 	"github.com/codera/code-executor/internal/recovery"
 	"github.com/codera/code-executor/internal/language"
-	"github.com/codera/code-executor/internal/language/java"
-	"github.com/codera/code-executor/internal/language/python"
-	"github.com/codera/code-executor/internal/language/go"
-	"github.com/codera/code-executor/internal/language/cpp"
-	"github.com/codera/code-executor/internal/sandbox"
-	"github.com/codera/code-executor/internal/repository"
 	"github.com/codera/code-executor/internal/judge"
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -60,12 +61,14 @@ func main() {
 	pythonProfile, _ := sandbox.GetProfileForLanguage("python")
 	goProfile, _ := sandbox.GetProfileForLanguage("go")
 	cppProfile, _ := sandbox.GetProfileForLanguage("cpp")
+	sqlProfile, _ := sandbox.GetProfileForLanguage("sql")
 	
 	// Register Language Executors
 	langRegistry.Register(java.NewExecutor(javaProfile))
 	langRegistry.Register(python.NewExecutor(pythonProfile))
 	langRegistry.Register(golang.NewExecutor(goProfile))
 	langRegistry.Register(cpp.NewExecutor(cppProfile))
+	langRegistry.Register(sql.NewExecutor(sqlProfile))
 
 	// Initialize Execution Service
 	execService := execution.NewService(cfg, langRegistry, sb)

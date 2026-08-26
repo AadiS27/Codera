@@ -13,6 +13,7 @@ import (
 	golang "github.com/codera/code-executor/internal/language/go"
 	"github.com/codera/code-executor/internal/language/java"
 	"github.com/codera/code-executor/internal/language/python"
+	"github.com/codera/code-executor/internal/language/sql"
 	"github.com/codera/code-executor/internal/sandbox"
 	"github.com/codera/code-executor/internal/sandbox/docker"
 )
@@ -33,11 +34,13 @@ func setupService() (*Service, sandbox.Runtime) {
 	pythonProfile, _ := sandbox.GetProfileForLanguage("python")
 	goProfile, _ := sandbox.GetProfileForLanguage("go")
 	cppProfile, _ := sandbox.GetProfileForLanguage("cpp")
+	sqlProfile, _ := sandbox.GetProfileForLanguage("sql")
 
 	registry.Register(java.NewExecutor(javaProfile))
 	registry.Register(python.NewExecutor(pythonProfile))
 	registry.Register(golang.NewExecutor(goProfile))
 	registry.Register(cpp.NewExecutor(cppProfile))
+	registry.Register(sql.NewExecutor(sqlProfile))
 
 	return NewService(cfg, registry, sb), sb
 }
