@@ -20,6 +20,38 @@ export default function AdminPanel() {
 
   const [status, setStatus] = useState({ type: '', message: '' });
 
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkJSON, setBulkJSON] = useState('');
+  const [bulkError, setBulkError] = useState('');
+
+  const handleBulkImport = () => {
+    try {
+      const parsed = JSON.parse(bulkJSON);
+      if (!Array.isArray(parsed)) throw new Error('Root must be a JSON array');
+      
+      const newCases = parsed.map(tc => ({
+        input: tc.input || '',
+        expected_output: tc.expected_output || tc.output || '',
+        is_hidden: !!tc.is_hidden,
+        explanation: tc.explanation || ''
+      }));
+
+      const current = formData.test_cases;
+      if (current.length === 1 && current[0].input === '' && current[0].expected_output === '') {
+        setFormData(prev => ({ ...prev, test_cases: newCases }));
+      } else {
+        setFormData(prev => ({ ...prev, test_cases: [...prev.test_cases, ...newCases] }));
+      }
+      
+      setShowBulkModal(false);
+      setBulkJSON('');
+      setBulkError('');
+    } catch (e) {
+      const err = e as Error;
+      setBulkError(`JSON Error: ${err.message}`);
+    }
+  };
+
   const addTestCase = () => {
     setFormData(prev => ({
       ...prev,
@@ -27,7 +59,7 @@ export default function AdminPanel() {
     }));
   };
 
-  const updateTestCase = (index: number, field: string, value: any) => {
+  const updateTestCase = (index: number, field: string, value: string | boolean) => {
     const newTestCases = [...formData.test_cases];
     newTestCases[index] = { ...newTestCases[index], [field]: value };
     setFormData(prev => ({ ...prev, test_cases: newTestCases }));
@@ -71,8 +103,9 @@ export default function AdminPanel() {
         test_cases: [{ input: '', expected_output: '', is_hidden: false, explanation: '' }]
       });
       
-    } catch (err: any) {
-      setStatus({ type: 'error', message: `> ERROR: ${err.message}` });
+    } catch (err) {
+      const e = err as Error;
+      setStatus({ type: 'error', message: `> ERROR: ${e.message}` });
     }
   };
 
@@ -159,10 +192,39 @@ export default function AdminPanel() {
           <div className="test-cases-section">
             <div className="section-header">
               <h3><Database size={18} /> VALIDATION_MATRICES [TEST_CASES]</h3>
-              <button type="button" onClick={addTestCase} className="cyber-btn cyber-btn-outline cyber-chamfer-sm">
-                <Plus size={14} /> ADD_MATRIX
-              </button>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button type="button" onClick={() => setShowBulkModal(!showBulkModal)} className="cyber-btn cyber-btn-outline cyber-chamfer-sm">
+                  <Plus size={14} /> BULK_IMPORT (JSON)
+                </button>
+                <button type="button" onClick={addTestCase} className="cyber-btn cyber-btn-outline cyber-chamfer-sm">
+                  <Plus size={14} /> ADD_MATRIX
+                </button>
+              </div>
             </div>
+
+            {showBulkModal && (
+              <div className="bulk-import-panel cyber-card cyber-chamfer-sm" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--fg-primary)', fontFamily: 'var(--font-label)' }}>BULK IMPORT VIA JSON</h4>
+                <p className="terminal-subtitle" style={{ margin: '0 0 1rem 0' }}>Paste an array of objects with &quot;input&quot; and &quot;expected_output&quot; keys.</p>
+                <textarea
+                  className="cyber-input"
+                  rows={8}
+                  placeholder='[&#10;  { "input": "1 2\n", "expected_output": "3\n" },&#10;  { "input": "5 5\n", "expected_output": "10\n", "is_hidden": true }&#10;]'
+                  value={bulkJSON}
+                  onChange={e => setBulkJSON(e.target.value)}
+                  style={{ width: '100%', marginBottom: '1rem', fontFamily: 'monospace' }}
+                />
+                {bulkError && <div className="status-message error" style={{ marginBottom: '1rem' }}>{bulkError}</div>}
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setShowBulkModal(false)} className="cyber-btn cyber-btn-outline cyber-chamfer-sm">
+                    CANCEL
+                  </button>
+                  <button type="button" onClick={handleBulkImport} className="cyber-btn cyber-btn-primary cyber-chamfer-sm">
+                    IMPORT
+                  </button>
+                </div>
+              </div>
+            )}
             
             <div className="test-cases-grid">
               {formData.test_cases.map((tc, idx) => (
@@ -232,7 +294,7 @@ export default function AdminPanel() {
         </form>
       </div>
 
-      <style /* eslint-disable-next-line react/no-unknown-property */ jsx>{`
+      <style jsx>{`
         .admin-container {
           padding: 4rem 2rem;
           max-width: 1200px;
